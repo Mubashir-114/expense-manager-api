@@ -39,7 +39,15 @@ const allowedOrigins = process.env.CORS_ORIGIN
 
 const corsOptions = {
   origin(origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
+    if (
+      !origin ||
+      allowedOrigins.includes(origin) ||
+      (process.env.NODE_ENV !== "production" &&
+        (origin.startsWith("http://localhost:") ||
+          origin.startsWith("http://127.0.0.1:") ||
+          origin.startsWith("https://localhost:") ||
+          origin.startsWith("https://127.0.0.1:")))
+    ) {
       return callback(null, true);
     }
     return callback(new Error("Not allowed by CORS"));
