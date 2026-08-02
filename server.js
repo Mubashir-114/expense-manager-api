@@ -73,8 +73,8 @@ app.set("trust proxy", 1);
 app.use(helmet());
 app.use(compression());
 app.use(cors(corsOptions));
-app.use(express.json({ limit: process.env.JSON_LIMIT || "10kb" }));
-app.use(express.urlencoded({ extended: true, limit: process.env.JSON_LIMIT || "10kb" }));
+app.use(express.json({ limit: process.env.JSON_LIMIT || "1mb" }));
+app.use(express.urlencoded({ extended: true, limit: process.env.JSON_LIMIT || "1mb" }));
 app.use(cookieParser(process.env.COOKIE_SECRET));
 app.use(limiter);
 
