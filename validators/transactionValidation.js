@@ -95,3 +95,46 @@ export const transactionQueryValidation = [
     .withMessage("Limit must be between 1 and 100")
     .toInt(),
 ];
+
+export const importSmsValidation = [
+  body()
+    .isArray({ min: 1 })
+    .withMessage("Transactions must be a non-empty array"),
+  body("*.amount")
+    .isFloat({ gt: 0 })
+    .withMessage("Amount must be greater than zero")
+    .toFloat(),
+  body("*.type")
+    .trim()
+    .isIn(["income", "expense"])
+    .withMessage("Type must be either income or expense"),
+  body("*.merchant")
+    .trim()
+    .notEmpty()
+    .withMessage("Merchant is required"),
+  body("*.bank")
+    .trim()
+    .notEmpty()
+    .withMessage("Bank is required"),
+  body("*.category")
+    .trim()
+    .notEmpty()
+    .withMessage("Category is required"),
+  body("*.date")
+    .isISO8601()
+    .withMessage("Invalid date format")
+    .toDate(),
+  body("*.sender")
+    .trim()
+    .notEmpty()
+    .withMessage("Sender is required"),
+  body("*.sms_hash")
+    .trim()
+    .notEmpty()
+    .withMessage("SMS Hash is required"),
+  body("*.message")
+    .trim()
+    .notEmpty()
+    .withMessage("Message is required"),
+];
+

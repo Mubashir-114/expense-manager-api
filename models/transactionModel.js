@@ -171,3 +171,52 @@ export const getCategoryById = async (categoryId) => {
   ]);
   return rows[0];
 };
+
+export const getCategories = async () => {
+  const [rows] = await db.execute("SELECT * FROM categories");
+  return rows;
+};
+
+export const getTransactionByHash = async (userId, smsHash) => {
+  const [rows] = await db.execute(
+    "SELECT id FROM transactions WHERE user_id = ? AND sms_hash = ?",
+    [userId, smsHash],
+  );
+  return rows[0] || null;
+};
+
+export const createSmsTransaction = async (
+  userId,
+  categoryId,
+  type,
+  title,
+  amount,
+  transactionDate,
+  note,
+  smsHash,
+  sender,
+  bank,
+  referenceNumber,
+) => {
+  const [result] = await db.execute(
+    `INSERT INTO transactions
+        (user_id, category_id, type, title, amount, transaction_date, note, sms_hash, sender, bank, reference_number, source)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'sms')`,
+    [
+      userId,
+      categoryId,
+      type,
+      title,
+      amount,
+      transactionDate,
+      note,
+      smsHash,
+      sender,
+      bank,
+      referenceNumber,
+    ],
+  );
+
+  return result.insertId;
+};
+

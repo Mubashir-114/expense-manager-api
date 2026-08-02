@@ -12,12 +12,26 @@ export const getDashboardSummary = async (userId) => {
     [userId],
   );
 
+  const [smsStatsRows] = await db.execute(
+    `
+        SELECT
+            COALESCE(SUM(CASE WHEN source = 'sms' AND DATE(transaction_date) = CURDATE() THEN 1 ELSE 0 END), 0) AS smsImportedToday,
+            COALESCE(SUM(CASE WHEN source = 'sms' THEN 1 ELSE 0 END), 0) AS totalSmsImported
+        FROM transactions
+        WHERE user_id = ?
+        `,
+    [userId],
+  );
+
   const summary = rows[0];
+  const smsStats = smsStatsRows[0];
 
   return {
     totalIncome: Number(summary.totalIncome),
     totalExpense: Number(summary.totalExpense),
     balance: Number(summary.totalIncome) - Number(summary.totalExpense),
+    smsImportedToday: Number(smsStats.smsImportedToday),
+    totalSmsImported: Number(smsStats.totalSmsImported),
   };
 };
 

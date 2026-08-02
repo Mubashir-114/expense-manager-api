@@ -8,12 +8,14 @@ import {
   getSingleTransaction,
   editTransaction,
   removeTransaction,
+  importSmsTransactions,
 } from "../controllers/transactionController.js";
 
 import {
   transactionValidation,
   transactionIdValidation,
   transactionQueryValidation,
+  importSmsValidation,
 } from "../validators/transactionValidation.js";
 
 import validate from "../middleware/validate.js";
@@ -23,6 +25,8 @@ const router = express.Router();
 router.use(authMiddleware);
 
 router.post("/", transactionValidation, validate, addTransaction);
+
+router.post("/import-sms", importSmsValidation, validate, importSmsTransactions);
 
 router.get("/", transactionQueryValidation, validate, getAllTransactions);
 

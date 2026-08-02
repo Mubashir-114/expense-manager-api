@@ -9,6 +9,7 @@ import {
 
 import AppError from "../utils/AppError.js";
 import asyncHandler from "../utils/asyncHandler.js";
+import TransactionImportService from "../services/transactionImportService.js";
 
 export const addTransaction = asyncHandler(async (req, res) => {
   const { categoryId, type, title, amount, transactionDate, note } = req.body;
@@ -126,3 +127,21 @@ export const removeTransaction = asyncHandler(async (req, res) => {
     data: null,
   });
 });
+
+export const importSmsTransactions = asyncHandler(async (req, res) => {
+  const transactions = req.body;
+
+  const result = await TransactionImportService.importSmsTransactions(
+    req.user.id,
+    transactions,
+  );
+
+  res.json({
+    success: true,
+    message: `${result.imported} transactions imported`,
+    imported: result.imported,
+    duplicates: result.skipped,
+    failed: result.failed,
+  });
+});
+
