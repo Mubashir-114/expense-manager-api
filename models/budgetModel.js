@@ -50,7 +50,10 @@ export const getBudgets = async (userId, filters = {}) => {
 
   const [rows] = await db.execute(sql, values);
 
-  return rows;
+  return rows.map(row => ({
+    ...row,
+    amount: Number(row.amount)
+  }));
 };
 
 export const getBudgetById = async (budgetId, userId) => {
@@ -74,7 +77,11 @@ export const getBudgetById = async (budgetId, userId) => {
     [budgetId, userId],
   );
 
-  return rows[0];
+  if (!rows[0]) return null;
+  return {
+    ...rows[0],
+    amount: Number(rows[0].amount)
+  };
 };
 
 export const updateBudget = async (

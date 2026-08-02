@@ -55,7 +55,11 @@ export const getMonthlySummary = async (userId) => {
     [userId],
   );
 
-  return rows;
+  return rows.map(row => ({
+    ...row,
+    income: Number(row.income),
+    expense: Number(row.expense)
+  }));
 };
 
 export const getExpenseByCategory = async (userId) => {
@@ -84,7 +88,10 @@ export const getExpenseByCategory = async (userId) => {
         [userId]
     );
 
-    return rows;
+    return rows.map(row => ({
+      ...row,
+      total: Number(row.total)
+    }));
 };
 
 export const getRecentTransactions = async (userId) => {
@@ -109,5 +116,8 @@ export const getRecentTransactions = async (userId) => {
         [userId]
     );
 
-    return rows;
+    return rows.map(row => ({
+      ...row,
+      amount: Number(row.amount)
+    }));
 };

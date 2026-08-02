@@ -97,7 +97,10 @@ export const getTransactions = async (userId, query) => {
   const [count] = await db.execute(countSql, countValues);
 
   return {
-    transactions: rows,
+    transactions: rows.map(row => ({
+      ...row,
+      amount: Number(row.amount)
+    })),
     total: count[0].total,
     page,
     limit,
@@ -117,7 +120,11 @@ export const getTransactionById = async (id, userId) => {
     [id, userId],
   );
 
-  return rows[0];
+  if (!rows[0]) return null;
+  return {
+    ...rows[0],
+    amount: Number(rows[0].amount)
+  };
 };
 
 export const updateTransaction = async (
