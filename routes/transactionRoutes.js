@@ -9,6 +9,7 @@ import {
   editTransaction,
   removeTransaction,
   importSmsTransactions,
+  getImportedSmsHashes,
 } from "../controllers/transactionController.js";
 
 import {
@@ -29,6 +30,8 @@ router.post("/", transactionValidation, validate, addTransaction);
 router.post("/import-sms", importSmsValidation, validate, importSmsTransactions);
 
 router.get("/", transactionQueryValidation, validate, getAllTransactions);
+
+router.get("/imported-hashes", getImportedSmsHashes);
 
 router.get("/:id", transactionIdValidation, validate, getSingleTransaction);
 

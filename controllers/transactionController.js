@@ -5,6 +5,7 @@ import {
   updateTransaction,
   deleteTransaction,
   getCategoryById,
+  getImportedHashes,
 } from "../models/transactionModel.js";
 
 import AppError from "../utils/AppError.js";
@@ -144,4 +145,14 @@ export const importSmsTransactions = asyncHandler(async (req, res) => {
     failed: result.failed,
   });
 });
+
+export const getImportedSmsHashes = asyncHandler(async (req, res) => {
+  const hashes = await getImportedHashes(req.user.id);
+  res.json({
+    success: true,
+    message: "Imported SMS hashes fetched",
+    data: hashes,
+  });
+});
+
 

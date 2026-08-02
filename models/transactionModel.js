@@ -220,3 +220,12 @@ export const createSmsTransaction = async (
   return result.insertId;
 };
 
+export const getImportedHashes = async (userId) => {
+  const [rows] = await db.execute(
+    "SELECT sms_hash FROM transactions WHERE user_id = ? AND sms_hash IS NOT NULL",
+    [userId],
+  );
+  return rows.map((row) => row.sms_hash);
+};
+
+
