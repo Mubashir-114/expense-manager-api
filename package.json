@@ -8,6 +8,7 @@
     "dev": "node --watch server.js",
     "prod": "node server.js",
     "pm2:start": "pm2 start server.js --name personal-finance-manager",
+    "test": "node --import ./config/testEnv.js --test",
     "audit": "npm audit"
   },
   "keywords": [],
