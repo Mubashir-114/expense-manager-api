@@ -3,7 +3,13 @@ import {
   getTransactionByHash,
   createSmsTransaction,
 } from "../models/transactionModel.js";
-import logger from "../utils/logger.js";
+import logger, { getSafeErrorDetails } from "../utils/logger.js";
+
+export const isDuplicateSmsHash = (error) =>
+  error?.code === "ER_DUP_ENTRY" &&
+  `${error.message || ""} ${error.sqlMessage || ""}`.includes(
+    "uq_transaction_sms_hash",
+  );
 
 class TransactionImportService {
   /**
@@ -41,9 +47,7 @@ class TransactionImportService {
         const existingTx = await getTransactionByHash(userId, sms_hash);
         if (existingTx) {
           skipped++;
-          logger.info(
-            `Skipping SMS import: transaction already exists for user ${userId} with hash ${sms_hash}`,
-          );
+          logger.info("Skipping duplicate SMS transaction.");
           continue;
         }
 
@@ -93,16 +97,22 @@ class TransactionImportService {
 
         imported++;
       } catch (error) {
+        if (isDuplicateSmsHash(error)) {
+          skipped++;
+          logger.info("Skipping duplicate SMS transaction.");
+          continue;
+        }
+
         failed++;
-        logger.error(
-          `Failed to import transaction hash ${tx.sms_hash} for user ${userId}:`,
-          error,
-        );
+        logger.error({
+          message: "Failed to import SMS transaction",
+          ...getSafeErrorDetails(error),
+        });
       }
     }
 
     logger.info(
-      `SMS Import Job Complete for user ${userId}: imported=${imported}, skipped=${skipped}, failed=${failed}`,
+      `SMS import complete: imported=${imported}, skipped=${skipped}, failed=${failed}`,
     );
 
     return {
