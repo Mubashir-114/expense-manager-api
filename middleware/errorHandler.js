@@ -1,4 +1,5 @@
-import logger from "../utils/logger.js";
+import logger, { getSafeErrorDetails } from "../utils/logger.js";
+import { getSafePath } from "./requestLogger.js";
 
 const getDuplicateMessage = (error) => {
   if (error.sqlMessage && error.sqlMessage.includes("users.email")) {
@@ -56,15 +57,17 @@ const errorHandler = (err, req, res, next) => {
     message = "Invalid JSON payload";
   }
 
-  // Log all errors
+  if (statusCode >= 500) {
+    message = "Internal Server Error";
+    errors = null;
+  }
+
   logger.error({
-    message: err.message || message,
+    message: "Request failed",
     statusCode,
     method: req.method,
-    url: req.originalUrl,
-    ip: req.ip,
-    stack: err.stack,
-    errors,
+    path: getSafePath(req),
+    ...getSafeErrorDetails(err),
   });
 
   const response = {
@@ -73,7 +76,7 @@ const errorHandler = (err, req, res, next) => {
     errors,
   };
 
-  if (process.env.NODE_ENV !== "production") {
+  if (statusCode < 500 && process.env.NODE_ENV !== "production") {
     response.stack = err.stack;
   }
 
