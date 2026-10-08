@@ -111,11 +111,15 @@ export const importSmsValidation = [
   body("*.merchant")
     .trim()
     .notEmpty()
-    .withMessage("Merchant is required"),
+    .withMessage("Merchant is required")
+    .isLength({ max: 150 })
+    .withMessage("Merchant must not exceed 150 characters"),
   body("*.bank")
     .trim()
     .notEmpty()
-    .withMessage("Bank is required"),
+    .withMessage("Bank is required")
+    .isLength({ max: 50 })
+    .withMessage("Bank must not exceed 50 characters"),
   body("*.category")
     .trim()
     .notEmpty()
@@ -127,14 +131,25 @@ export const importSmsValidation = [
   body("*.sender")
     .trim()
     .notEmpty()
-    .withMessage("Sender is required"),
+    .withMessage("Sender is required")
+    .isLength({ max: 50 })
+    .withMessage("Sender must not exceed 50 characters"),
   body("*.sms_hash")
     .trim()
     .notEmpty()
-    .withMessage("SMS Hash is required"),
+    .withMessage("SMS Hash is required")
+    .isLength({ max: 64 })
+    .withMessage("SMS Hash must not exceed 64 characters"),
   body("*.message")
     .trim()
     .notEmpty()
-    .withMessage("Message is required"),
+    .withMessage("Message is required")
+    .isLength({ max: 1000 })
+    .withMessage("Message must not exceed 1000 characters"),
+  body("*.reference")
+    .optional({ nullable: true })
+    .isString()
+    .withMessage("Reference must be a string")
+    .isLength({ max: 100 })
+    .withMessage("Reference must not exceed 100 characters"),
 ];
-
