@@ -70,11 +70,18 @@ export const getTransactions = async (userId, query) => {
     countValues.push(`%${query.search}%`);
   }
 
-  if (query.from && query.to) {
-    sql += " AND t.transaction_date BETWEEN ? AND ?";
-    countSql += " AND t.transaction_date BETWEEN ? AND ?";
-    values.push(query.from, query.to);
-    countValues.push(query.from, query.to);
+  if (query.from) {
+    sql += " AND t.transaction_date >= ?";
+    countSql += " AND t.transaction_date >= ?";
+    values.push(query.from);
+    countValues.push(query.from);
+  }
+
+  if (query.to) {
+    sql += " AND t.transaction_date <= ?";
+    countSql += " AND t.transaction_date <= ?";
+    values.push(query.to);
+    countValues.push(query.to);
   }
 
   const allowedSort = ["transaction_date", "amount", "created_at"];
@@ -227,5 +234,3 @@ export const getImportedHashes = async (userId) => {
   );
   return rows.map((row) => row.sms_hash);
 };
-
-

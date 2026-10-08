@@ -1,7 +1,13 @@
 import mysql from "mysql2/promise";
 import dotenv from "dotenv";
 
-dotenv.config();
+import { validateTestDatabaseConfig } from "../utils/configValidation.js";
+
+if (process.env.NODE_ENV === "test") {
+    validateTestDatabaseConfig();
+} else {
+    dotenv.config();
+}
 
 const pool = mysql.createPool({
     host: process.env.DB_HOST,

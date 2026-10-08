@@ -10,6 +10,30 @@ const logFormat = winston.format.combine(
   winston.format.json()
 );
 
+// Errors are already written to error-%DATE%.log; keep them out of the
+// access log so they are not stored twice.
+const excludeErrors = winston.format((info) => (info.level === "error" ? false : info));
+
+export const getSafeErrorDetails = (error) => {
+  const details = {};
+
+  if (
+    typeof error?.name === "string" &&
+    /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(error.name)
+  ) {
+    details.errorName = error.name;
+  }
+
+  if (
+    typeof error?.code === "string" &&
+    /^[A-Z0-9_]{1,64}$/.test(error.code)
+  ) {
+    details.errorCode = error.code;
+  }
+
+  return details;
+};
+
 const logger = winston.createLogger({
   level: process.env.LOG_LEVEL || "info",
   format: logFormat,
@@ -24,6 +48,7 @@ const logger = winston.createLogger({
     }),
     new DailyRotateFile({
       filename: path.join(logDir, "access-%DATE%.log"),
+      format: excludeErrors(),
       datePattern: "YYYY-MM-DD",
       zippedArchive: true,
       maxSize: "20m",

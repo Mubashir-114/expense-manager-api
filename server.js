@@ -4,7 +4,6 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import helmet from "helmet";
 import compression from "compression";
-import morgan from "morgan";
 import rateLimit from "express-rate-limit";
 import swaggerUi from "swagger-ui-express";
 
@@ -16,14 +15,16 @@ import reportRoutes from "./routes/reportRoutes.js";
 
 import notFound from "./middleware/notFound.js";
 import errorHandler from "./middleware/errorHandler.js";
+import { createRequestLogger } from "./middleware/requestLogger.js";
 
 import { validateConfig } from "./utils/configValidation.js";
-import logger from "./utils/logger.js";
+import logger, { getSafeErrorDetails } from "./utils/logger.js";
 import swaggerDocument from "./config/swagger.js";
 import pool from "./config/db.js";
 
-// Load environment variables
-dotenv.config();
+if (process.env.NODE_ENV !== "test") {
+  dotenv.config();
+}
 
 // Validate config variables
 validateConfig();
@@ -78,10 +79,9 @@ app.use(express.urlencoded({ extended: true, limit: process.env.JSON_LIMIT || "1
 app.use(cookieParser(process.env.COOKIE_SECRET));
 app.use(limiter);
 
-// Access logging middleware
+// Access logging middleware (path only; query strings are never logged)
 if (process.env.NODE_ENV !== "test") {
-  const format = process.env.NODE_ENV === "production" ? "combined" : "dev";
-  app.use(morgan(format, { stream: logger.stream }));
+  app.use(createRequestLogger());
 }
 
 // Swagger documentation
@@ -94,7 +94,10 @@ app.get("/health", async (req, res) => {
     await pool.query("SELECT 1");
   } catch (error) {
     dbStatus = "unhealthy";
-    logger.error("Health check database query failure:", error);
+    logger.error({
+      message: "Health check database query failure",
+      ...getSafeErrorDetails(error),
+    });
   }
 
   const isHealthy = dbStatus === "healthy";
@@ -134,9 +137,12 @@ app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
 
-const server = app.listen(PORT, () => {
+const onListening = () => {
   logger.info(`Server running on port ${PORT}`);
-});
+};
+const server = process.env.NODE_ENV === "test"
+  ? app.listen(PORT, "127.0.0.1", onListening)
+  : app.listen(PORT, onListening);
 
 // Graceful shutdown handler
 const gracefulShutdown = (signal) => {
@@ -149,7 +155,10 @@ const gracefulShutdown = (signal) => {
       logger.info("Database connection pool closed.");
       process.exit(0);
     } catch (err) {
-      logger.error("Error during database pool shutdown:", err);
+      logger.error({
+        message: "Error during database pool shutdown",
+        ...getSafeErrorDetails(err),
+      });
       process.exit(1);
     }
   });
@@ -167,11 +176,17 @@ process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
 
 // Handle unhandled exceptions & promise rejections
 process.on("uncaughtException", (error) => {
-  logger.error("UNCAUGHT EXCEPTION: Server shutting down...", error);
+  logger.error({
+    message: "UNCAUGHT EXCEPTION: Server shutting down",
+    ...getSafeErrorDetails(error),
+  });
   process.exit(1);
 });
 
 process.on("unhandledRejection", (reason, promise) => {
-  logger.error("UNHANDLED REJECTION: Server shutting down...", reason);
+  logger.error({
+    message: "UNHANDLED REJECTION: Server shutting down",
+    ...getSafeErrorDetails(reason),
+  });
   process.exit(1);
 });
