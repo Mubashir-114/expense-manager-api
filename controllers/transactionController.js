@@ -13,7 +13,7 @@ import asyncHandler from "../utils/asyncHandler.js";
 import TransactionImportService from "../services/transactionImportService.js";
 
 export const addTransaction = asyncHandler(async (req, res) => {
-  const { categoryId, type, title, amount, transactionDate, note } = req.body;
+  const { categoryId, type, title, amount, transactionDate, note, accountId } = req.body;
 
   const category = await getCategoryById(categoryId);
 
@@ -36,6 +36,7 @@ export const addTransaction = asyncHandler(async (req, res) => {
     amount,
     transactionDate,
     note,
+    accountId,
   );
 
   res.status(201).json({
@@ -74,7 +75,7 @@ export const getSingleTransaction = asyncHandler(async (req, res) => {
 });
 
 export const editTransaction = asyncHandler(async (req, res) => {
-  const { categoryId, type, title, amount, transactionDate, note } = req.body;
+  const { categoryId, type, title, amount, transactionDate, note, accountId } = req.body;
 
   const category = await getCategoryById(categoryId);
 
@@ -98,6 +99,7 @@ export const editTransaction = asyncHandler(async (req, res) => {
     amount,
     transactionDate,
     note,
+    accountId,
   );
 
   if (!updated) {

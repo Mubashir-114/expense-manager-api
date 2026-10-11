@@ -1,4 +1,5 @@
 import db from "../config/db.js";
+import AppError from "../utils/AppError.js";
 
 const toPositiveInteger = (value, fallback, max) => {
   const parsed = Number.parseInt(value, 10);
@@ -18,12 +19,23 @@ export const createTransaction = async (
   amount,
   transactionDate,
   note,
+  accountId = null,
 ) => {
+  if (accountId) {
+    const [accRows] = await db.execute(
+      "SELECT id, status FROM accounts WHERE id = ? AND user_id = ?",
+      [accountId, userId],
+    );
+    if (!accRows[0] || accRows[0].status !== "active") {
+      throw new AppError("Account not found or inactive", 400);
+    }
+  }
+
   const [result] = await db.execute(
     `INSERT INTO transactions
-        (user_id, category_id, type, title, amount, transaction_date, note)
-        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [userId, categoryId, type, title, amount, transactionDate, note],
+        (user_id, category_id, account_id, type, title, amount, transaction_date, note)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [userId, categoryId, accountId || null, type, title, amount, transactionDate, note],
   );
 
   return result.insertId;
@@ -33,10 +45,13 @@ export const getTransactions = async (userId, query) => {
   let sql = `
         SELECT
             t.*,
-            c.name AS category
+            c.name AS category,
+            a.display_name AS account_name
         FROM transactions t
         JOIN categories c
             ON c.id = t.category_id
+        LEFT JOIN accounts a
+            ON a.id = t.account_id
         WHERE t.user_id = ?
     `;
 
@@ -48,6 +63,13 @@ export const getTransactions = async (userId, query) => {
 
   const values = [userId];
   const countValues = [userId];
+
+  if (query.accountId) {
+    sql += " AND t.account_id = ?";
+    countSql += " AND t.account_id = ?";
+    values.push(query.accountId);
+    countValues.push(query.accountId);
+  }
 
   if (query.type) {
     sql += " AND t.type = ?";
@@ -104,10 +126,19 @@ export const getTransactions = async (userId, query) => {
   const [count] = await db.execute(countSql, countValues);
 
   return {
-    transactions: rows.map(row => ({
-      ...row,
-      amount: Number(row.amount)
-    })),
+    transactions: rows.map((row) => {
+      const tx = {
+        ...row,
+        amount: Number(row.amount),
+      };
+      if (row.account_id !== undefined && row.account_id !== null) {
+        tx.accountId = row.account_id;
+      }
+      if (row.account_name !== undefined && row.account_name !== null) {
+        tx.accountName = row.account_name;
+      }
+      return tx;
+    }),
     total: count[0].total,
     page,
     limit,
@@ -117,10 +148,13 @@ export const getTransactionById = async (id, userId) => {
   const [rows] = await db.execute(
     `SELECT
             t.*,
-            c.name AS category
+            c.name AS category,
+            a.display_name AS account_name
         FROM transactions t
         JOIN categories c
             ON c.id = t.category_id
+        LEFT JOIN accounts a
+            ON a.id = t.account_id
         WHERE
             t.id = ?
             AND t.user_id = ?`,
@@ -128,10 +162,18 @@ export const getTransactionById = async (id, userId) => {
   );
 
   if (!rows[0]) return null;
-  return {
-    ...rows[0],
-    amount: Number(rows[0].amount)
+  const row = rows[0];
+  const tx = {
+    ...row,
+    amount: Number(row.amount),
   };
+  if (row.account_id !== undefined && row.account_id !== null) {
+    tx.accountId = row.account_id;
+  }
+  if (row.account_name !== undefined && row.account_name !== null) {
+    tx.accountName = row.account_name;
+  }
+  return tx;
 };
 
 export const updateTransaction = async (
@@ -143,9 +185,36 @@ export const updateTransaction = async (
   amount,
   transactionDate,
   note,
+  accountId = undefined,
 ) => {
-  const [result] = await db.execute(
-    `UPDATE transactions
+  if (accountId) {
+    const [accRows] = await db.execute(
+      "SELECT id, status FROM accounts WHERE id = ? AND user_id = ?",
+      [accountId, userId],
+    );
+    if (!accRows[0] || accRows[0].status !== "active") {
+      throw new AppError("Account not found or inactive", 400);
+    }
+  }
+
+  let sql;
+  let params;
+  if (accountId !== undefined) {
+    sql = `UPDATE transactions
+        SET
+            category_id=?,
+            account_id=?,
+            type=?,
+            title=?,
+            amount=?,
+            transaction_date=?,
+            note=?
+        WHERE
+            id=?
+            AND user_id=?`;
+    params = [categoryId, accountId || null, type, title, amount, transactionDate, note, id, userId];
+  } else {
+    sql = `UPDATE transactions
         SET
             category_id=?,
             type=?,
@@ -155,10 +224,11 @@ export const updateTransaction = async (
             note=?
         WHERE
             id=?
-            AND user_id=?`,
-    [categoryId, type, title, amount, transactionDate, note, id, userId],
-  );
+            AND user_id=?`;
+    params = [categoryId, type, title, amount, transactionDate, note, id, userId];
+  }
 
+  const [result] = await db.execute(sql, params);
   return result.affectedRows;
 };
 

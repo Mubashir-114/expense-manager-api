@@ -33,6 +33,12 @@ export const transactionValidation = [
     .trim()
     .isLength({ max: 1000 })
     .withMessage("Note must not exceed 1000 characters"),
+
+  body("accountId")
+    .optional({ nullable: true })
+    .isInt({ min: 1 })
+    .withMessage("Invalid account id")
+    .toInt(),
 ];
 
 export const transactionIdValidation = [
@@ -48,6 +54,12 @@ export const transactionQueryValidation = [
     .trim()
     .isIn(["income", "expense"])
     .withMessage("Invalid type"),
+
+  query("accountId")
+    .optional()
+    .isInt({ min: 1 })
+    .withMessage("Invalid account id")
+    .toInt(),
 
   query("categoryId")
     .optional()

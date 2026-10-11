@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 import db from "../config/db.js";
 import AppError from "../utils/AppError.js";
-import { formatMinorAsDecimal } from "../utils/money.js";
+import { formatMinorAsDecimal, parseDecimalToMinor } from "../utils/money.js";
 
 const ACCOUNT_COLUMNS = `
   id, user_id, type, subtype, display_name, institution_name,
@@ -54,7 +54,7 @@ const selectById = async (executor, accountId, userId, forUpdate = false) => {
   return rows[0] || null;
 };
 
-const withTransaction = async (userId, operation) => {
+export const withTransaction = async (userId, operation) => {
   const connection = await db.getConnection();
   const lockName = `fintrack:accounts:${userId}`;
   let transactionStarted = false;
@@ -300,5 +300,227 @@ export const archiveAccount = async (accountId, userId) => withTransaction(userI
 
   return toAccountJson(await selectById(connection, accountId, userId));
 });
+
+export const getAccountLedgerBalance = async (accountId, userId) => {
+  const account = await selectById(db, accountId, userId);
+  if (!account) return null;
+
+  const openingMinor = BigInt(account.opening_amount_minor ?? 0);
+
+  // 1. Transactions
+  const [txRows] = await db.execute(
+    "SELECT type, amount FROM transactions WHERE user_id = ? AND account_id = ?",
+    [userId, accountId],
+  );
+  let incomeMinor = 0n;
+  let expenseMinor = 0n;
+  for (const row of txRows) {
+    const minor = BigInt(parseDecimalToMinor(String(row.amount)));
+    if (row.type === "income") {
+      incomeMinor += minor;
+    } else if (row.type === "expense") {
+      expenseMinor += minor;
+    }
+  }
+
+  // 2. Transfers
+  const [transfersInRows] = await db.execute(
+    "SELECT amount_minor FROM transfers WHERE user_id = ? AND destination_account_id = ?",
+    [userId, accountId],
+  );
+  let transfersInMinor = 0n;
+  for (const row of transfersInRows) {
+    transfersInMinor += BigInt(row.amount_minor);
+  }
+
+  const [transfersOutRows] = await db.execute(
+    "SELECT amount_minor FROM transfers WHERE user_id = ? AND source_account_id = ?",
+    [userId, accountId],
+  );
+  let transfersOutMinor = 0n;
+  for (const row of transfersOutRows) {
+    transfersOutMinor += BigInt(row.amount_minor);
+  }
+
+  // 3. Adjustments
+  const [adjustmentRows] = await db.execute(
+    "SELECT amount_minor FROM account_adjustments WHERE user_id = ? AND account_id = ?",
+    [userId, accountId],
+  );
+  let adjustmentsMinor = 0n;
+  for (const row of adjustmentRows) {
+    adjustmentsMinor += BigInt(row.amount_minor);
+  }
+
+  const isCreditCard = account.type === "credit_card";
+  let currentBalanceMinor;
+  let availableCredit = null;
+
+  if (!isCreditCard) {
+    currentBalanceMinor =
+      openingMinor +
+      incomeMinor -
+      expenseMinor +
+      transfersInMinor -
+      transfersOutMinor +
+      adjustmentsMinor;
+  } else {
+    currentBalanceMinor =
+      openingMinor +
+      expenseMinor -
+      incomeMinor +
+      transfersOutMinor -
+      transfersInMinor -
+      adjustmentsMinor;
+    if (account.credit_limit_minor !== null && account.credit_limit_minor !== undefined) {
+      const limitMinor = BigInt(account.credit_limit_minor);
+      const availableMinor = limitMinor - currentBalanceMinor;
+      availableCredit = formatMinorAsDecimal(availableMinor);
+    }
+  }
+
+  return {
+    accountId: account.id,
+    displayName: account.display_name,
+    type: account.type,
+    subtype: account.subtype,
+    currencyCode: account.currency_code,
+    openingAmount: formatMinorAsDecimal(openingMinor),
+    currentBalance: formatMinorAsDecimal(currentBalanceMinor),
+    totalIncome: formatMinorAsDecimal(incomeMinor),
+    totalExpense: formatMinorAsDecimal(expenseMinor),
+    transfersIn: formatMinorAsDecimal(transfersInMinor),
+    transfersOut: formatMinorAsDecimal(transfersOutMinor),
+    totalAdjustments: formatMinorAsDecimal(adjustmentsMinor),
+    creditLimit:
+      account.credit_limit_minor !== null && account.credit_limit_minor !== undefined
+        ? formatMinorAsDecimal(account.credit_limit_minor)
+        : null,
+    availableCredit,
+  };
+};
+
+export const getAccountActivity = async (accountId, userId, filters = {}) => {
+  const account = await selectById(db, accountId, userId);
+  if (!account) return null;
+
+  const page = Number(filters.page ?? 1);
+  const limit = Number(filters.limit ?? 20);
+  if (!Number.isSafeInteger(page) || page < 1) {
+    throw new AppError("Page must be a positive safe integer", 400);
+  }
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
+    throw new AppError("Limit must be a safe integer between 1 and 100", 400);
+  }
+  const offset = (page - 1) * limit;
+
+  // Transactions on this account
+  const [txRows] = await db.execute(
+    `SELECT t.id, t.type, t.title, t.amount, t.transaction_date, t.note, t.created_at,
+            c.name AS category_name, 'transaction' AS activity_type
+       FROM transactions t
+       JOIN categories c ON c.id = t.category_id
+      WHERE t.user_id = ? AND t.account_id = ?`,
+    [userId, accountId],
+  );
+
+  // Transfers out
+  const [txOutRows] = await db.execute(
+    `SELECT t.id, 'transfer_out' AS type,
+            CONCAT('Transfer to ', da.display_name) AS title,
+            t.amount_minor, t.transfer_date AS transaction_date, t.note, t.created_at,
+            'Transfer' AS category_name, 'transfer' AS activity_type
+       FROM transfers t
+       JOIN accounts da ON da.id = t.destination_account_id
+      WHERE t.user_id = ? AND t.source_account_id = ?`,
+    [userId, accountId],
+  );
+
+  // Transfers in
+  const [txInRows] = await db.execute(
+    `SELECT t.id, 'transfer_in' AS type,
+            CONCAT('Transfer from ', sa.display_name) AS title,
+            t.amount_minor, t.transfer_date AS transaction_date, t.note, t.created_at,
+            'Transfer' AS category_name, 'transfer' AS activity_type
+       FROM transfers t
+       JOIN accounts sa ON sa.id = t.source_account_id
+      WHERE t.user_id = ? AND t.destination_account_id = ?`,
+    [userId, accountId],
+  );
+
+  // Adjustments
+  const [adjRows] = await db.execute(
+    `SELECT id,
+            (CASE WHEN amount_minor > 0 THEN 'adjustment_credit' ELSE 'adjustment_debit' END) AS type,
+            reason AS title,
+            amount_minor, adjustment_date AS transaction_date, NULL AS note, created_at,
+            'Adjustment' AS category_name, 'adjustment' AS activity_type
+       FROM account_adjustments
+      WHERE user_id = ? AND account_id = ?`,
+    [userId, accountId],
+  );
+
+  const activities = [
+    ...txRows.map((r) => ({
+      id: `tx-${r.id}`,
+      activityType: "transaction",
+      type: r.type,
+      title: r.title,
+      amount: typeof r.amount === "number" ? r.amount.toFixed(2) : String(r.amount),
+      date: r.transaction_date instanceof Date ? r.transaction_date.toISOString().slice(0, 10) : String(r.transaction_date).slice(0, 10),
+      note: r.note ?? null,
+      category: r.category_name ?? null,
+      createdAt: r.created_at,
+    })),
+    ...txOutRows.map((r) => ({
+      id: `tr-out-${r.id}`,
+      activityType: "transfer",
+      type: "transfer_out",
+      title: r.title,
+      amount: formatMinorAsDecimal(r.amount_minor),
+      date: r.transaction_date instanceof Date ? r.transaction_date.toISOString().slice(0, 10) : String(r.transaction_date).slice(0, 10),
+      note: r.note ?? null,
+      category: "Transfer",
+      createdAt: r.created_at,
+    })),
+    ...txInRows.map((r) => ({
+      id: `tr-in-${r.id}`,
+      activityType: "transfer",
+      type: "transfer_in",
+      title: r.title,
+      amount: formatMinorAsDecimal(r.amount_minor),
+      date: r.transaction_date instanceof Date ? r.transaction_date.toISOString().slice(0, 10) : String(r.transaction_date).slice(0, 10),
+      note: r.note ?? null,
+      category: "Transfer",
+      createdAt: r.created_at,
+    })),
+    ...adjRows.map((r) => ({
+      id: `adj-${r.id}`,
+      activityType: "adjustment",
+      type: r.type,
+      title: r.title,
+      amount: formatMinorAsDecimal(BigInt(r.amount_minor) < 0n ? -BigInt(r.amount_minor) : BigInt(r.amount_minor)),
+      date: r.transaction_date instanceof Date ? r.transaction_date.toISOString().slice(0, 10) : String(r.transaction_date).slice(0, 10),
+      note: null,
+      category: "Adjustment",
+      createdAt: r.created_at,
+    })),
+  ];
+
+  activities.sort((a, b) => {
+    if (a.date !== b.date) return b.date.localeCompare(a.date);
+    return String(b.createdAt ?? "").localeCompare(String(a.createdAt ?? ""));
+  });
+
+  const total = activities.length;
+  const paginated = activities.slice(offset, offset + limit);
+
+  return {
+    activities: paginated,
+    total,
+    page,
+    limit,
+  };
+};
 
 export { toAccountJson };

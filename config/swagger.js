@@ -143,6 +143,160 @@ const swaggerDocument = {
           errors: { type: "array", nullable: true, items: { type: "object" } },
         },
       },
+      Transfer: {
+        type: "object",
+        properties: {
+          id: { type: "integer", example: 1 },
+          sourceAccountId: { type: "integer", example: 5 },
+          destinationAccountId: { type: "integer", example: 6 },
+          sourceAccountName: { type: "string", example: "Primary Bank" },
+          destinationAccountName: { type: "string", example: "Cash Wallet" },
+          amount: { type: "string", example: "500.00" },
+          currencyCode: { type: "string", example: "INR" },
+          transferDate: { type: "string", format: "date", example: "2026-10-11" },
+          note: { type: "string", nullable: true, example: "ATM withdrawal" },
+          createdAt: { type: "string", format: "date-time" },
+        },
+      },
+      TransferCreate: {
+        type: "object",
+        required: ["sourceAccountId", "destinationAccountId", "amount", "transferDate", "clientTransferKey"],
+        properties: {
+          sourceAccountId: { type: "integer", example: 5 },
+          destinationAccountId: { type: "integer", example: 6 },
+          amount: { type: "string", pattern: "^(0|[1-9]\\d*)(\\.\\d{1,2})?$", example: "500.00" },
+          transferDate: { type: "string", format: "date", example: "2026-10-11" },
+          note: { type: "string", nullable: true, example: "ATM withdrawal" },
+          clientTransferKey: { type: "string", example: "tr-client-001" },
+        },
+      },
+      AccountBalance: {
+        type: "object",
+        properties: {
+          accountId: { type: "integer", example: 5 },
+          displayName: { type: "string", example: "Primary Bank" },
+          type: { type: "string", example: "bank" },
+          subtype: { type: "string", example: "savings" },
+          currencyCode: { type: "string", example: "INR" },
+          openingAmount: { type: "string", example: "1000.00" },
+          currentBalance: { type: "string", example: "1450.00" },
+          totalIncome: { type: "string", example: "500.00" },
+          totalExpense: { type: "string", example: "50.00" },
+          transfersIn: { type: "string", example: "100.00" },
+          transfersOut: { type: "string", example: "100.00" },
+          totalAdjustments: { type: "string", example: "0.00" },
+          creditLimit: { type: "string", nullable: true },
+          availableCredit: { type: "string", nullable: true },
+        },
+      },
+      AccountAdjustment: {
+        type: "object",
+        properties: {
+          id: { type: "integer", example: 1 },
+          accountId: { type: "integer", example: 5 },
+          amount: { type: "string", example: "-25.00" },
+          reason: { type: "string", example: "Bank charge reconciliation" },
+          adjustmentDate: { type: "string", format: "date", example: "2026-10-11" },
+          createdAt: { type: "string", format: "date-time" },
+        },
+      },
+      AccountAdjustmentCreate: {
+        type: "object",
+        required: ["amount", "reason", "adjustmentDate", "clientAdjustmentKey"],
+        properties: {
+          amount: { type: "string", pattern: "^-?(0|[1-9]\\d*)(\\.\\d{1,2})?$", example: "-25.00" },
+          reason: { type: "string", minLength: 3, maxLength: 255, example: "Bank fee correction" },
+          adjustmentDate: { type: "string", format: "date", example: "2026-10-11" },
+          clientAdjustmentKey: { type: "string", example: "adj-client-001" },
+        },
+      },
+      TransferResponse: {
+        type: "object",
+        properties: {
+          success: { type: "boolean", example: true },
+          message: { type: "string", example: "Transfer completed" },
+          data: {
+            type: "object",
+            properties: {
+              transfer: { $ref: "#/components/schemas/Transfer" },
+            },
+          },
+        },
+      },
+      TransferListResponse: {
+        type: "object",
+        properties: {
+          success: { type: "boolean", example: true },
+          message: { type: "string", example: "Transfers fetched" },
+          data: {
+            type: "object",
+            properties: {
+              transfers: { type: "array", items: { $ref: "#/components/schemas/Transfer" } },
+              total: { type: "integer" },
+              page: { type: "integer" },
+              limit: { type: "integer" },
+            },
+          },
+        },
+      },
+      AccountBalanceResponse: {
+        type: "object",
+        properties: {
+          success: { type: "boolean", example: true },
+          message: { type: "string", example: "Account balance fetched" },
+          data: {
+            type: "object",
+            properties: {
+              balance: { $ref: "#/components/schemas/AccountBalance" },
+            },
+          },
+        },
+      },
+      AccountActivityResponse: {
+        type: "object",
+        properties: {
+          success: { type: "boolean", example: true },
+          message: { type: "string", example: "Account activity fetched" },
+          data: {
+            type: "object",
+            properties: {
+              activities: { type: "array", items: { type: "object" } },
+              total: { type: "integer" },
+              page: { type: "integer" },
+              limit: { type: "integer" },
+            },
+          },
+        },
+      },
+      AccountAdjustmentResponse: {
+        type: "object",
+        properties: {
+          success: { type: "boolean", example: true },
+          message: { type: "string", example: "Adjustment recorded" },
+          data: {
+            type: "object",
+            properties: {
+              adjustment: { $ref: "#/components/schemas/AccountAdjustment" },
+            },
+          },
+        },
+      },
+      AccountAdjustmentListResponse: {
+        type: "object",
+        properties: {
+          success: { type: "boolean", example: true },
+          message: { type: "string", example: "Adjustments fetched" },
+          data: {
+            type: "object",
+            properties: {
+              adjustments: { type: "array", items: { $ref: "#/components/schemas/AccountAdjustment" } },
+              total: { type: "integer" },
+              page: { type: "integer" },
+              limit: { type: "integer" },
+            },
+          },
+        },
+      },
     },
   },
   security: [
@@ -816,6 +970,115 @@ const swaggerDocument = {
           401: { description: "Authentication required", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
           404: { description: "Not found or not owned", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
           503: { description: "Account operation is busy", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+        },
+      },
+    },
+    "/api/transfers": {
+      post: {
+        tags: ["Transfers"],
+        summary: "Execute an atomic inter-account transfer",
+        security: [{ BearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { $ref: "#/components/schemas/TransferCreate" } } },
+        },
+        responses: {
+          201: { description: "Transfer completed", content: { "application/json": { schema: { $ref: "#/components/schemas/TransferResponse" } } } },
+          400: { description: "Validation failure or invalid accounts", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+          401: { description: "Authentication required", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+          409: { description: "Idempotency key reused with different payload", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+          503: { description: "Account operation busy", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+        },
+      },
+      get: {
+        tags: ["Transfers"],
+        summary: "List transfers with pagination and optional account filter",
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          { name: "accountId", in: "query", schema: { type: "integer" } },
+          { name: "page", in: "query", schema: { type: "integer", default: 1 } },
+          { name: "limit", in: "query", schema: { type: "integer", default: 20 } },
+        ],
+        responses: {
+          200: { description: "Transfers fetched", content: { "application/json": { schema: { $ref: "#/components/schemas/TransferListResponse" } } } },
+          401: { description: "Authentication required", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+        },
+      },
+    },
+    "/api/transfers/{id}": {
+      get: {
+        tags: ["Transfers"],
+        summary: "Get transfer by ID",
+        security: [{ BearerAuth: [] }],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+        responses: {
+          200: { description: "Transfer fetched", content: { "application/json": { schema: { $ref: "#/components/schemas/TransferResponse" } } } },
+          401: { description: "Authentication required", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+          404: { description: "Transfer not found", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+        },
+      },
+    },
+    "/api/accounts/{id}/balance": {
+      get: {
+        tags: ["Account Ledger"],
+        summary: "Get exact ledger-computed balance for an account",
+        security: [{ BearerAuth: [] }],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+        responses: {
+          200: { description: "Account balance fetched", content: { "application/json": { schema: { $ref: "#/components/schemas/AccountBalanceResponse" } } } },
+          401: { description: "Authentication required", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+          404: { description: "Account not found", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+        },
+      },
+    },
+    "/api/accounts/{id}/activity": {
+      get: {
+        tags: ["Account Ledger"],
+        summary: "Get unified chronological activity feed for an account",
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer" } },
+          { name: "page", in: "query", schema: { type: "integer", default: 1 } },
+          { name: "limit", in: "query", schema: { type: "integer", default: 20 } },
+        ],
+        responses: {
+          200: { description: "Account activity fetched", content: { "application/json": { schema: { $ref: "#/components/schemas/AccountActivityResponse" } } } },
+          401: { description: "Authentication required", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+          404: { description: "Account not found", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+        },
+      },
+    },
+    "/api/accounts/{id}/adjustments": {
+      post: {
+        tags: ["Account Ledger"],
+        summary: "Record an auditable balance adjustment",
+        security: [{ BearerAuth: [] }],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { $ref: "#/components/schemas/AccountAdjustmentCreate" } } },
+        },
+        responses: {
+          201: { description: "Adjustment recorded", content: { "application/json": { schema: { $ref: "#/components/schemas/AccountAdjustmentResponse" } } } },
+          400: { description: "Validation error", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+          401: { description: "Authentication required", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+          404: { description: "Account not found", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+          409: { description: "Idempotency conflict", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+        },
+      },
+      get: {
+        tags: ["Account Ledger"],
+        summary: "List balance adjustments for an account",
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer" } },
+          { name: "page", in: "query", schema: { type: "integer", default: 1 } },
+          { name: "limit", in: "query", schema: { type: "integer", default: 20 } },
+        ],
+        responses: {
+          200: { description: "Adjustments fetched", content: { "application/json": { schema: { $ref: "#/components/schemas/AccountAdjustmentListResponse" } } } },
+          401: { description: "Authentication required", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+          404: { description: "Account not found", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
         },
       },
     },

@@ -1,7 +1,9 @@
 import {
   archiveAccount,
   createAccount,
+  getAccountActivity,
   getAccountById,
+  getAccountLedgerBalance,
   getAccounts,
   setDefaultAccount,
   updateAccount,
@@ -64,4 +66,16 @@ export const archiveSingleAccount = asyncHandler(async (req, res) => {
   const account = await archiveAccount(req.params.id, req.user.id);
   if (!account) throw new AppError("Account not found", 404);
   res.json({ success: true, message: "Account archived", data: { account } });
+});
+
+export const getAccountBalance = asyncHandler(async (req, res) => {
+  const balance = await getAccountLedgerBalance(req.params.id, req.user.id);
+  if (!balance) throw new AppError("Account not found", 404);
+  res.json({ success: true, message: "Account balance fetched", data: { balance } });
+});
+
+export const getAccountActivityLog = asyncHandler(async (req, res) => {
+  const result = await getAccountActivity(req.params.id, req.user.id, req.query);
+  if (!result) throw new AppError("Account not found", 404);
+  res.json({ success: true, message: "Account activity fetched", data: result });
 });
