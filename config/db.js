@@ -22,6 +22,10 @@ const pool = mysql.createPool({
 
     enableKeepAlive: true,
     keepAliveInitialDelay: 0,
+
+    // Keep safe BIGINT values numeric, but return unsafe values as exact strings.
+    supportBigNumbers: true,
+    bigNumberStrings: false,
 });
 
 export default pool;
