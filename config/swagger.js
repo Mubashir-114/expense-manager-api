@@ -297,6 +297,68 @@ const swaggerDocument = {
           },
         },
       },
+      DetectedTransaction: {
+        type: "object",
+        properties: {
+          id: { type: "integer", example: 1 },
+          userId: { type: "integer", example: 42 },
+          accountId: { type: "integer", nullable: true, example: 5 },
+          accountName: { type: "string", nullable: true, example: "Primary HDFC" },
+          categoryId: { type: "integer", nullable: true, example: 2 },
+          categoryName: { type: "string", nullable: true, example: "Food" },
+          classification: { type: "string", example: "expense" },
+          amount: { type: "string", example: "450.00" },
+          transactionDate: { type: "string", format: "date", example: "2026-10-11" },
+          merchantRaw: { type: "string", example: "SWIGGY BANGALORE" },
+          merchantClean: { type: "string", example: "Swiggy" },
+          bank: { type: "string", example: "HDFC" },
+          sender: { type: "string", example: "HDFCBK" },
+          referenceNumber: { type: "string", nullable: true, example: "987654321000" },
+          maskedAccountHint: { type: "string", nullable: true, example: "1234" },
+          smsHash: { type: "string", example: "a1b2c3d4..." },
+          confidence: { type: "number", example: 0.95 },
+          confidenceReason: { type: "string", example: "Merchant recognized: Swiggy; Account matched: **1234" },
+          suggestedAccountId: { type: "integer", nullable: true, example: 5 },
+          suggestedAccountName: { type: "string", nullable: true, example: "Primary HDFC" },
+          suggestedCategoryId: { type: "integer", nullable: true, example: 2 },
+          suggestedCategoryName: { type: "string", nullable: true, example: "Food" },
+          isAccountAmbiguous: { type: "boolean", example: false },
+          status: { type: "string", enum: ["detected", "suggested", "confirmed", "rejected"], example: "suggested" },
+          rejectionReason: { type: "string", nullable: true },
+          confirmedTransactionId: { type: "integer", nullable: true },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" },
+        },
+      },
+      DetectedTransactionResponse: {
+        type: "object",
+        properties: {
+          success: { type: "boolean", example: true },
+          message: { type: "string", example: "Detected transaction fetched" },
+          data: {
+            type: "object",
+            properties: {
+              transaction: { $ref: "#/components/schemas/DetectedTransaction" },
+            },
+          },
+        },
+      },
+      DetectedTransactionListResponse: {
+        type: "object",
+        properties: {
+          success: { type: "boolean", example: true },
+          message: { type: "string", example: "Detected transactions fetched" },
+          data: {
+            type: "object",
+            properties: {
+              detectedTransactions: { type: "array", items: { $ref: "#/components/schemas/DetectedTransaction" } },
+              total: { type: "integer" },
+              page: { type: "integer" },
+              limit: { type: "integer" },
+            },
+          },
+        },
+      },
     },
   },
   security: [
@@ -1079,6 +1141,199 @@ const swaggerDocument = {
           200: { description: "Adjustments fetched", content: { "application/json": { schema: { $ref: "#/components/schemas/AccountAdjustmentListResponse" } } } },
           401: { description: "Authentication required", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
           404: { description: "Account not found", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+        },
+      },
+    },
+    "/api/smart-transactions/detect": {
+      post: {
+        tags: ["Smart Transactions"],
+        summary: "Ingest and parse SMS messages into suggested transactions",
+        security: [{ BearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  messages: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        sender: { type: "string", example: "HDFCBK" },
+                        message: { type: "string", example: "Rs 450.00 debited from A/C **1234 on 11-Oct-26 at Swiggy." },
+                        date: { type: "string", example: "2026-10-11T12:00:00Z" },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: { description: "Detection complete" },
+          400: { description: "Validation error" },
+          401: { description: "Unauthorized" },
+        },
+      },
+    },
+    "/api/smart-transactions": {
+      get: {
+        tags: ["Smart Transactions"],
+        summary: "List detected transactions with suggestions and review status",
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          { name: "status", in: "query", schema: { type: "string", enum: ["suggested", "detected", "confirmed", "rejected", "all"] } },
+          { name: "classification", in: "query", schema: { type: "string" } },
+          { name: "search", in: "query", schema: { type: "string" } },
+          { name: "page", in: "query", schema: { type: "integer", default: 1 } },
+          { name: "limit", in: "query", schema: { type: "integer", default: 20 } },
+        ],
+        responses: {
+          200: { description: "Transactions fetched", content: { "application/json": { schema: { $ref: "#/components/schemas/DetectedTransactionListResponse" } } } },
+          401: { description: "Unauthorized" },
+        },
+      },
+    },
+    "/api/smart-transactions/{id}": {
+      get: {
+        tags: ["Smart Transactions"],
+        summary: "Get detected transaction details",
+        security: [{ BearerAuth: [] }],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+        responses: {
+          200: { description: "Found", content: { "application/json": { schema: { $ref: "#/components/schemas/DetectedTransactionResponse" } } } },
+          404: { description: "Not found" },
+        },
+      },
+      put: {
+        tags: ["Smart Transactions"],
+        summary: "Apply manual corrections to detected transaction",
+        security: [{ BearerAuth: [] }],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  merchantClean: { type: "string", example: "Swiggy" },
+                  classification: { type: "string", example: "expense" },
+                  categoryId: { type: "integer", example: 2 },
+                  accountId: { type: "integer", example: 5 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: { description: "Updated" },
+          400: { description: "Invalid input" },
+          404: { description: "Not found" },
+        },
+      },
+    },
+    "/api/smart-transactions/{id}/confirm": {
+      post: {
+        tags: ["Smart Transactions"],
+        summary: "Confirm detected transaction into ledger",
+        security: [{ BearerAuth: [] }],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+        requestBody: {
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  merchantClean: { type: "string" },
+                  classification: { type: "string" },
+                  categoryId: { type: "integer" },
+                  accountId: { type: "integer" },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: { description: "Confirmed and posted to ledger" },
+          400: { description: "Invalid selection" },
+          404: { description: "Not found" },
+          409: { description: "Already confirmed or rejected" },
+        },
+      },
+    },
+    "/api/smart-transactions/{id}/reject": {
+      post: {
+        tags: ["Smart Transactions"],
+        summary: "Reject detected transaction",
+        security: [{ BearerAuth: [] }],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+        requestBody: {
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  reason: { type: "string", example: "Duplicate or irrelevant notification" },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: { description: "Rejected" },
+          404: { description: "Not found" },
+          409: { description: "Already confirmed" },
+        },
+      },
+    },
+    "/api/smart-transactions/batch/confirm": {
+      post: {
+        tags: ["Smart Transactions"],
+        summary: "Batch confirm detected transactions",
+        security: [{ BearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  items: { type: "array", items: { type: "object" } },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: { description: "Batch processed" },
+        },
+      },
+    },
+    "/api/smart-transactions/batch/reject": {
+      post: {
+        tags: ["Smart Transactions"],
+        summary: "Batch reject detected transactions",
+        security: [{ BearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  ids: { type: "array", items: { type: "integer" } },
+                  reason: { type: "string" },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: { description: "Batch rejected" },
         },
       },
     },

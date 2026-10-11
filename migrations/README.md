@@ -48,6 +48,11 @@ auditable `account_adjustments` ledger table.
 `0004` is the Phase 3A.4 additive schema adding statement closing day and
 payment due day configuration to credit card accounts with constraint guards.
 
+`0005` is the Phase 3B additive schema scoping `transactions.sms_hash`
+uniqueness to `(user_id, sms_hash)` and creating the `detected_transactions`
+table for the smart transaction parsing, auto-categorization, account matching,
+and staged review workflow.
+
 Runtime application credentials are intentionally insufficient to apply
 these scripts. Schema setup must use a separately controlled migration/admin
 identity, after which the API runs with its least-privilege account.
