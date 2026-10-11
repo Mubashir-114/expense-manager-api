@@ -9,6 +9,11 @@ import {
   editBudget,
   removeBudget,
   budgetStatus,
+  budgetProgress,
+  budgetAlerts,
+  budgetSuggestions,
+  budgetHistory,
+  budgetSavingsTarget,
 } from "../controllers/budgetController.js";
 
 import {
@@ -16,6 +21,11 @@ import {
   budgetIdValidation,
   budgetQueryValidation,
   budgetStatusValidation,
+  budgetProgressValidation,
+  budgetAlertsValidation,
+  budgetSuggestionsValidation,
+  budgetHistoryValidation,
+  budgetSavingsTargetValidation,
 } from "../validators/budgetValidation.js";
 
 import validate from "../middleware/validate.js";
@@ -29,6 +39,16 @@ router.post("/", budgetValidation, validate, addBudget);
 router.get("/", budgetQueryValidation, validate, getAllBudgets);
 
 router.get("/status", budgetStatusValidation, validate, budgetStatus);
+
+router.get("/progress", budgetProgressValidation, validate, budgetProgress);
+
+router.get("/alerts", budgetAlertsValidation, validate, budgetAlerts);
+
+router.get("/suggestions", budgetSuggestionsValidation, validate, budgetSuggestions);
+
+router.get("/history", budgetHistoryValidation, validate, budgetHistory);
+
+router.get("/savings-target", budgetSavingsTargetValidation, validate, budgetSavingsTarget);
 
 router.get("/:id", budgetIdValidation, validate, getSingleBudget);
 

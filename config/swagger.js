@@ -822,6 +822,143 @@ const swaggerDocument = {
         },
       },
     },
+    "/api/budgets/progress": {
+      get: {
+        tags: ["Budgets"],
+        summary: "Get real-time budget progress, overall limits, category breakdown and savings target",
+        parameters: [
+          { name: "month", in: "query", schema: { type: "integer" }, required: false },
+          { name: "year", in: "query", schema: { type: "integer" }, required: false },
+          { name: "savingsTarget", in: "query", schema: { type: "number" }, required: false },
+        ],
+        responses: {
+          200: {
+            description: "Real-time budget progress metrics and forecasts",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    success: { type: "boolean", example: true },
+                    message: { type: "string", example: "Budget progress fetched" },
+                    data: { type: "object" },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    "/api/budgets/alerts": {
+      get: {
+        tags: ["Budgets"],
+        summary: "Get active budget warnings, approaching limits, exceeded alerts, and actionable insights",
+        parameters: [
+          { name: "month", in: "query", schema: { type: "integer" }, required: false },
+          { name: "year", in: "query", schema: { type: "integer" }, required: false },
+        ],
+        responses: {
+          200: {
+            description: "Active budget alerts and insights",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    success: { type: "boolean", example: true },
+                    message: { type: "string", example: "Budget alerts fetched" },
+                    data: { type: "object" },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    "/api/budgets/suggestions": {
+      get: {
+        tags: ["Budgets"],
+        summary: "Get deterministic smart budget suggestions based on 3-month historical analysis",
+        parameters: [
+          { name: "month", in: "query", schema: { type: "integer" }, required: false },
+          { name: "year", in: "query", schema: { type: "integer" }, required: false },
+          { name: "savingsTarget", in: "query", schema: { type: "number" }, required: false },
+        ],
+        responses: {
+          200: {
+            description: "Suggested budget amounts and spending trends",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    success: { type: "boolean", example: true },
+                    message: { type: "string", example: "Budget suggestions fetched" },
+                    data: { type: "object" },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    "/api/budgets/history": {
+      get: {
+        tags: ["Budgets"],
+        summary: "Get historical spending vs budget comparison over past months",
+        parameters: [
+          { name: "months", in: "query", schema: { type: "integer", default: 6 }, required: false },
+        ],
+        responses: {
+          200: {
+            description: "Historical budget comparison periods",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    success: { type: "boolean", example: true },
+                    message: { type: "string", example: "Budget history fetched" },
+                    data: { type: "object" },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    "/api/budgets/savings-target": {
+      get: {
+        tags: ["Budgets"],
+        summary: "Get monthly savings target tracking and net savings progress",
+        parameters: [
+          { name: "month", in: "query", schema: { type: "integer" }, required: false },
+          { name: "year", in: "query", schema: { type: "integer" }, required: false },
+          { name: "targetAmount", in: "query", schema: { type: "number" }, required: false },
+        ],
+        responses: {
+          200: {
+            description: "Savings target progress status",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    success: { type: "boolean", example: true },
+                    message: { type: "string", example: "Savings target progress fetched" },
+                    data: { type: "object" },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
     "/api/reports/summary": {
       get: {
         tags: ["Reports"],

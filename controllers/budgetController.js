@@ -7,6 +7,10 @@ import {
   categoryExists,
   budgetExists,
   getBudgetStatus,
+  getBudgetProgress,
+  getBudgetAlerts,
+  getBudgetSuggestions,
+  getBudgetHistory,
 } from "../models/budgetModel.js";
 
 import AppError from "../utils/AppError.js";
@@ -160,5 +164,81 @@ export const budgetStatus = asyncHandler(async (req, res) => {
       year: Number(year),
       budgets,
     },
+  });
+});
+
+export const budgetProgress = asyncHandler(async (req, res) => {
+  const now = new Date();
+  const month = req.query.month ? Number(req.query.month) : now.getUTCMonth() + 1;
+  const year = req.query.year ? Number(req.query.year) : now.getUTCFullYear();
+
+  const progress = await getBudgetProgress(req.user.id, month, year, {
+    savingsTarget: req.query.savingsTarget,
+  });
+
+  res.json({
+    success: true,
+    message: "Budget progress fetched",
+    data: progress,
+  });
+});
+
+export const budgetAlerts = asyncHandler(async (req, res) => {
+  const now = new Date();
+  const month = req.query.month ? Number(req.query.month) : now.getUTCMonth() + 1;
+  const year = req.query.year ? Number(req.query.year) : now.getUTCFullYear();
+
+  const alerts = await getBudgetAlerts(req.user.id, month, year);
+
+  res.json({
+    success: true,
+    message: "Budget alerts fetched",
+    data: alerts,
+  });
+});
+
+export const budgetSuggestions = asyncHandler(async (req, res) => {
+  const now = new Date();
+  const month = req.query.month ? Number(req.query.month) : now.getUTCMonth() + 1;
+  const year = req.query.year ? Number(req.query.year) : now.getUTCFullYear();
+
+  const suggestions = await getBudgetSuggestions(req.user.id, month, year, {
+    savingsTarget: req.query.savingsTarget,
+  });
+
+  res.json({
+    success: true,
+    message: "Budget suggestions fetched",
+    data: suggestions,
+  });
+});
+
+export const budgetHistory = asyncHandler(async (req, res) => {
+  const months = req.query.months ? Number(req.query.months) : 6;
+  const history = await getBudgetHistory(req.user.id, months);
+
+  res.json({
+    success: true,
+    message: "Budget history fetched",
+    data: {
+      months: history.length,
+      history,
+    },
+  });
+});
+
+export const budgetSavingsTarget = asyncHandler(async (req, res) => {
+  const now = new Date();
+  const month = req.query.month ? Number(req.query.month) : now.getUTCMonth() + 1;
+  const year = req.query.year ? Number(req.query.year) : now.getUTCFullYear();
+
+  const progress = await getBudgetProgress(req.user.id, month, year, {
+    savingsTarget: req.query.targetAmount,
+  });
+
+  res.json({
+    success: true,
+    message: "Savings target progress fetched",
+    data: progress.savings,
   });
 });
