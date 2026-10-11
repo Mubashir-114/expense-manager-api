@@ -5,6 +5,7 @@ These scripts are ordered by their numeric prefix.
 1. `0001_reconstructed_development_baseline.sql`
 2. `0002_account_foundation.sql`
 3. `0003_account_transactions_and_transfers.sql`
+4. `0004_credit_card_management.sql`
 
 `0001` is only a reconstructed baseline for a new, empty local development
 database. It was derived from the backend access paths at commit `7a91c362`.
@@ -43,6 +44,9 @@ per-user SMS-hash proposal.
 key association on `transactions`, creating the atomic `transfers` ledger table
 with user-isolated concurrency and uniqueness guards, and establishing the
 auditable `account_adjustments` ledger table.
+
+`0004` is the Phase 3A.4 additive schema adding statement closing day and
+payment due day configuration to credit card accounts with constraint guards.
 
 Runtime application credentials are intentionally insufficient to apply
 these scripts. Schema setup must use a separately controlled migration/admin

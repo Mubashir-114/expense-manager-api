@@ -34,6 +34,7 @@ export const accountCreateValidation = [
   rejectUnknownFields([
     "type", "subtype", "displayName", "institutionName", "maskedLast4",
     "currencyCode", "openingAmount", "creditLimit", "isDefault", "clientCreationKey",
+    "statementClosingDay", "paymentDueDay",
   ]),
   body("type").isIn(TYPES).withMessage("Invalid account type"),
   body("subtype").isString().custom((value, { req }) => {
@@ -52,6 +53,10 @@ export const accountCreateValidation = [
   body("isDefault").optional().isBoolean({ strict: true }).withMessage("isDefault must be a boolean"),
   body("clientCreationKey").isString().matches(/^[A-Za-z0-9._:-]{8,100}$/)
     .withMessage("Client creation key must be 8-100 safe characters"),
+  body("statementClosingDay").optional({ nullable: true }).isInt({ min: 1, max: 31 })
+    .withMessage("Statement closing day must be an integer between 1 and 31").toInt(),
+  body("paymentDueDay").optional({ nullable: true }).isInt({ min: 1, max: 31 })
+    .withMessage("Payment due day must be an integer between 1 and 31").toInt(),
   body().custom((payload) => {
     const institution = payload.institutionName;
     if (["bank", "credit_card"].includes(payload.type) && !institution) {
@@ -73,21 +78,66 @@ export const accountCreateValidation = [
       if (payload.creditLimit === undefined || !isPositiveMinor(parseDecimalToMinor(payload.creditLimit))) {
         throw new Error("Credit cards require a positive credit limit");
       }
-    } else if (payload.creditLimit !== undefined) {
-      throw new Error("Credit limit is valid only for credit cards");
+    } else {
+      if (payload.creditLimit !== undefined) {
+        throw new Error("Credit limit is valid only for credit cards");
+      }
+      if (payload.statementClosingDay !== undefined || payload.paymentDueDay !== undefined) {
+        throw new Error("Billing cycle settings are valid only for credit cards");
+      }
     }
     return true;
   }),
 ];
 
 export const accountUpdateValidation = [
-  rejectUnknownFields(["displayName", "institutionName", "maskedLast4"]),
+  rejectUnknownFields(["displayName", "institutionName", "maskedLast4", "statementClosingDay", "paymentDueDay"]),
   body("displayName").trim().notEmpty().isLength({ max: 100 })
     .withMessage("Display name is required and must not exceed 100 characters"),
   body("institutionName").optional({ nullable: true }).trim().isLength({ min: 1, max: 100 })
     .withMessage("Institution name must be between 1 and 100 characters"),
   body("maskedLast4").optional({ nullable: true }).matches(/^\d{4}$/)
     .withMessage("Masked last four must contain exactly four digits"),
+  body("statementClosingDay").optional({ nullable: true }).isInt({ min: 1, max: 31 })
+    .withMessage("Statement closing day must be an integer between 1 and 31").toInt(),
+  body("paymentDueDay").optional({ nullable: true }).isInt({ min: 1, max: 31 })
+    .withMessage("Payment due day must be an integer between 1 and 31").toInt(),
+];
+
+export const billingUpdateValidation = [
+  rejectUnknownFields(["statementClosingDay", "paymentDueDay"]),
+  body("statementClosingDay").optional({ nullable: true }).isInt({ min: 1, max: 31 })
+    .withMessage("Statement closing day must be an integer between 1 and 31").toInt(),
+  body("paymentDueDay").optional({ nullable: true }).isInt({ min: 1, max: 31 })
+    .withMessage("Payment due day must be an integer between 1 and 31").toInt(),
+];
+
+export const repaymentCreateValidation = [
+  rejectUnknownFields(["sourceAccountId", "amount", "paymentDate", "clientPaymentKey", "note"]),
+  body("sourceAccountId")
+    .isInt({ min: 1 })
+    .withMessage("Source account ID must be a positive integer")
+    .toInt(),
+  decimalString("amount", false),
+  body("amount").custom((val) => {
+    const minor = parseDecimalToMinor(val);
+    if (!isPositiveMinor(minor)) {
+      throw new Error("Repayment amount must be greater than zero");
+    }
+    return true;
+  }),
+  body("paymentDate")
+    .isISO8601({ strict: true })
+    .withMessage("Payment date must be a valid ISO8601 date (YYYY-MM-DD)"),
+  body("clientPaymentKey")
+    .isString()
+    .matches(/^[A-Za-z0-9._:-]{1,100}$/)
+    .withMessage("Client payment key must be 1-100 safe characters"),
+  body("note")
+    .optional({ nullable: true })
+    .trim()
+    .isLength({ max: 1000 })
+    .withMessage("Note must not exceed 1000 characters"),
 ];
 
 export const accountIdValidation = [
@@ -97,6 +147,11 @@ export const accountIdValidation = [
 export const accountQueryValidation = [
   query("type").optional().isIn(TYPES).withMessage("Invalid account type"),
   query("status").optional().isIn(["active", "archived"]).withMessage("Invalid account status"),
+  query("page").optional().isInt({ min: 1 }).withMessage("Page must be positive").toInt(),
+  query("limit").optional().isInt({ min: 1, max: 100 }).withMessage("Limit must be 1-100").toInt(),
+];
+
+export const paymentQueryValidation = [
   query("page").optional().isInt({ min: 1 }).withMessage("Page must be positive").toInt(),
   query("limit").optional().isInt({ min: 1, max: 100 }).withMessage("Limit must be 1-100").toInt(),
 ];

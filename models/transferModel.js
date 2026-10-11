@@ -3,7 +3,8 @@ import { createHash } from "node:crypto";
 import db from "../config/db.js";
 import AppError from "../utils/AppError.js";
 import { formatMinorAsDecimal, parseDecimalToMinor } from "../utils/money.js";
-import { withTransaction } from "./accountModel.js";
+import { toTransferJson } from "../utils/transferFormat.js";
+import { getAccountBalanceWithinTx, withTransaction } from "./accountModel.js";
 
 const TRANSFER_COLUMNS = `
   t.id, t.user_id, t.source_account_id, t.destination_account_id,
@@ -13,21 +14,7 @@ const TRANSFER_COLUMNS = `
   da.display_name AS destination_account_name
 `;
 
-export const toTransferJson = (row) => row && ({
-  id: row.id,
-  sourceAccountId: row.source_account_id,
-  destinationAccountId: row.destination_account_id,
-  sourceAccountName: row.source_account_name ?? null,
-  destinationAccountName: row.destination_account_name ?? null,
-  amount: formatMinorAsDecimal(row.amount_minor),
-  currencyCode: row.currency_code,
-  transferDate: row.transfer_date instanceof Date
-    ? row.transfer_date.toISOString().slice(0, 10)
-    : String(row.transfer_date).slice(0, 10),
-  note: row.note ?? null,
-  createdAt: row.created_at,
-  updatedAt: row.updated_at,
-});
+export { toTransferJson };
 
 const fingerprintTransfer = (transfer) => createHash("sha256")
   .update(JSON.stringify({
@@ -103,6 +90,16 @@ export const createTransfer = async (userId, data) => withTransaction(userId, as
   );
   if (!destRows[0] || destRows[0].status !== "active") {
     throw new AppError("Destination account not found or inactive", 400);
+  }
+
+  if (destRows[0].type === "credit_card") {
+    if (sourceRows[0].type === "credit_card") {
+      throw new AppError("Repayment must come from an asset account, not another credit card", 400);
+    }
+    const sourceBalanceMinor = await getAccountBalanceWithinTx(connection, data.sourceAccountId, userId);
+    if (sourceBalanceMinor < amountMinor) {
+      throw new AppError("Insufficient funds in source account", 400);
+    }
   }
 
   const [result] = await connection.execute(

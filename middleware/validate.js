@@ -10,7 +10,7 @@ const validate = (req, res, next) => {
       field: error.path,
       message: error.msg,
       value:
-        /(?:^|\.)(?:password|token|secret|authorization|email|message|note|sms_hash|sender|reference|merchant|bank|category|amount|openingAmount|creditLimit|maskedLast4|institutionName|clientCreationKey|clientTransferKey|clientAdjustmentKey|reason|sourceAccountId|destinationAccountId|date|transactionDate|title|search)(?:$|\.)/i.test(
+        /(?:^|\.)(?:password|token|secret|authorization|email|message|note|sms_hash|sender|reference|merchant|bank|category|amount|openingAmount|creditLimit|maskedLast4|institutionName|clientCreationKey|clientTransferKey|clientAdjustmentKey|clientPaymentKey|reason|sourceAccountId|destinationAccountId|date|transactionDate|title|search)(?:$|\.)/i.test(
           error.path,
         )
           ? "[REDACTED]"

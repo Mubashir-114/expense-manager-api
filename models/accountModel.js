@@ -3,11 +3,18 @@ import { createHash } from "node:crypto";
 import db from "../config/db.js";
 import AppError from "../utils/AppError.js";
 import { formatMinorAsDecimal, parseDecimalToMinor } from "../utils/money.js";
+import {
+  calculateUtilization,
+  computeCreditCardBilling,
+} from "../utils/creditCardBilling.js";
+import { toTransferJson } from "./transferModel.js";
 
 const ACCOUNT_COLUMNS = `
   id, user_id, type, subtype, display_name, institution_name,
   masked_last4, currency_code, opening_amount_minor, credit_limit_minor,
-  is_default, status, created_at, updated_at
+  is_default, status, client_creation_key, creation_fingerprint,
+  statement_closing_day, payment_due_day,
+  created_at, updated_at
 `;
 
 const fromMysqlBoolean = (value) => value === true || value === 1 || value === "1";
@@ -21,9 +28,15 @@ const toAccountJson = (row) => row && ({
   maskedLast4: row.masked_last4,
   currencyCode: row.currency_code,
   openingAmount: formatMinorAsDecimal(row.opening_amount_minor),
-  creditLimit: row.credit_limit_minor === null
+  creditLimit: row.credit_limit_minor === null || row.credit_limit_minor === undefined
     ? null
     : formatMinorAsDecimal(row.credit_limit_minor),
+  statementClosingDay: row.statement_closing_day === null || row.statement_closing_day === undefined
+    ? null
+    : Number(row.statement_closing_day),
+  paymentDueDay: row.payment_due_day === null || row.payment_due_day === undefined
+    ? null
+    : Number(row.payment_due_day),
   isDefault: fromMysqlBoolean(row.is_default),
   status: row.status,
   createdAt: row.created_at,
@@ -134,12 +147,15 @@ export const createAccount = async (userId, account) => withTransaction(userId, 
     }
   }
 
+  const sDay = account.type === "credit_card" ? (account.statementClosingDay ?? null) : null;
+  const pDay = account.type === "credit_card" ? (account.paymentDueDay ?? null) : null;
+
   const [result] = await connection.execute(
     `INSERT INTO accounts (
        user_id, type, subtype, display_name, institution_name, masked_last4,
        currency_code, opening_amount_minor, credit_limit_minor, is_default,
-       client_creation_key, creation_fingerprint
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       client_creation_key, creation_fingerprint, statement_closing_day, payment_due_day
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       userId,
       account.type,
@@ -153,6 +169,8 @@ export const createAccount = async (userId, account) => withTransaction(userId, 
       makeDefault,
       account.clientCreationKey,
       fingerprint,
+      sDay,
+      pDay,
     ],
   );
 
@@ -229,20 +247,55 @@ export const updateAccount = async (accountId, userId, changes) => withTransacti
     throw new AppError("Institution name is required for this account type", 400);
   }
 
+  const setClauses = ["display_name = ?", "institution_name = ?", "masked_last4 = ?"];
+  const setValues = [changes.displayName, changes.institutionName, changes.maskedLast4];
+
+  if (account.type === "credit_card") {
+    if (changes.statementClosingDay !== undefined) {
+      setClauses.push("statement_closing_day = ?");
+      setValues.push(changes.statementClosingDay ?? null);
+    }
+    if (changes.paymentDueDay !== undefined) {
+      setClauses.push("payment_due_day = ?");
+      setValues.push(changes.paymentDueDay ?? null);
+    }
+  } else if (changes.statementClosingDay !== undefined || changes.paymentDueDay !== undefined) {
+    throw new AppError("Billing cycle settings are valid only for credit cards", 400);
+  }
+
+  setValues.push(accountId, userId);
+
   await connection.execute(
     `UPDATE accounts
-        SET display_name = ?, institution_name = ?, masked_last4 = ?
+        SET ${setClauses.join(", ")}
       WHERE id = ? AND user_id = ?`,
-    [
-      changes.displayName,
-      changes.institutionName,
-      changes.maskedLast4,
-      accountId,
-      userId,
-    ],
+    setValues,
   );
 
   return toAccountJson(await selectById(connection, accountId, userId));
+});
+
+export const updateCreditCardBilling = async (cardId, userId, settings) => withTransaction(userId, async (connection) => {
+  const card = await selectById(connection, cardId, userId, true);
+  if (!card) return null;
+  if (card.type !== "credit_card") {
+    throw new AppError("Billing settings are only supported for credit cards", 400);
+  }
+  if (card.status === "archived") {
+    throw new AppError("Archived accounts cannot be updated", 409);
+  }
+
+  const sDay = settings.statementClosingDay !== undefined ? settings.statementClosingDay : card.statement_closing_day;
+  const pDay = settings.paymentDueDay !== undefined ? settings.paymentDueDay : card.payment_due_day;
+
+  await connection.execute(
+    `UPDATE accounts
+        SET statement_closing_day = ?, payment_due_day = ?
+      WHERE id = ? AND user_id = ?`,
+    [sDay ?? null, pDay ?? null, cardId, userId],
+  );
+
+  return toAccountJson(await selectById(connection, cardId, userId));
 });
 
 export const setDefaultAccount = async (accountId, userId) => withTransaction(userId, async (connection) => {
@@ -301,6 +354,86 @@ export const archiveAccount = async (accountId, userId) => withTransaction(userI
   return toAccountJson(await selectById(connection, accountId, userId));
 });
 
+/**
+ * Calculates current ledger balance within an existing transaction connection with FOR UPDATE.
+ */
+export const getAccountBalanceWithinTx = async (connection, accountId, userId) => {
+  const [rows] = await connection.execute(
+    `SELECT ${ACCOUNT_COLUMNS} FROM accounts WHERE id = ? AND user_id = ? FOR UPDATE`,
+    [accountId, userId],
+  );
+  const account = rows[0];
+  if (!account) return null;
+
+  const openingMinor = BigInt(account.opening_amount_minor ?? 0);
+
+  // Transactions
+  const [txRows] = await connection.execute(
+    "SELECT type, amount FROM transactions WHERE user_id = ? AND account_id = ?",
+    [userId, accountId],
+  );
+  let incomeMinor = 0n;
+  let expenseMinor = 0n;
+  for (const row of txRows) {
+    const minor = BigInt(parseDecimalToMinor(String(row.amount)));
+    if (row.type === "income") {
+      incomeMinor += minor;
+    } else if (row.type === "expense") {
+      expenseMinor += minor;
+    }
+  }
+
+  // Transfers
+  const [transfersInRows] = await connection.execute(
+    "SELECT amount_minor FROM transfers WHERE user_id = ? AND destination_account_id = ?",
+    [userId, accountId],
+  );
+  let transfersInMinor = 0n;
+  for (const row of transfersInRows) {
+    transfersInMinor += BigInt(row.amount_minor);
+  }
+
+  const [transfersOutRows] = await connection.execute(
+    "SELECT amount_minor FROM transfers WHERE user_id = ? AND source_account_id = ?",
+    [userId, accountId],
+  );
+  let transfersOutMinor = 0n;
+  for (const row of transfersOutRows) {
+    transfersOutMinor += BigInt(row.amount_minor);
+  }
+
+  // Adjustments
+  const [adjustmentRows] = await connection.execute(
+    "SELECT amount_minor FROM account_adjustments WHERE user_id = ? AND account_id = ?",
+    [userId, accountId],
+  );
+  let adjustmentsMinor = 0n;
+  for (const row of adjustmentRows) {
+    adjustmentsMinor += BigInt(row.amount_minor);
+  }
+
+  if (account.type !== "credit_card") {
+    return (
+      openingMinor +
+      incomeMinor -
+      expenseMinor +
+      transfersInMinor -
+      transfersOutMinor +
+      adjustmentsMinor
+    );
+  }
+
+  // For credit card, returns current debt
+  return (
+    openingMinor +
+    expenseMinor -
+    incomeMinor +
+    transfersOutMinor -
+    transfersInMinor -
+    adjustmentsMinor
+  );
+};
+
 export const getAccountLedgerBalance = async (accountId, userId) => {
   const account = await selectById(db, accountId, userId);
   if (!account) return null;
@@ -355,6 +488,9 @@ export const getAccountLedgerBalance = async (accountId, userId) => {
   const isCreditCard = account.type === "credit_card";
   let currentBalanceMinor;
   let availableCredit = null;
+  let outstandingDebt = null;
+  let utilizationPercentage = null;
+  let billingInfo = null;
 
   if (!isCreditCard) {
     currentBalanceMinor =
@@ -372,11 +508,21 @@ export const getAccountLedgerBalance = async (accountId, userId) => {
       transfersOutMinor -
       transfersInMinor -
       adjustmentsMinor;
+
+    outstandingDebt = formatMinorAsDecimal(currentBalanceMinor);
+
     if (account.credit_limit_minor !== null && account.credit_limit_minor !== undefined) {
       const limitMinor = BigInt(account.credit_limit_minor);
       const availableMinor = limitMinor - currentBalanceMinor;
       availableCredit = formatMinorAsDecimal(availableMinor);
+      utilizationPercentage = calculateUtilization(currentBalanceMinor, limitMinor);
     }
+
+    billingInfo = computeCreditCardBilling({
+      statementClosingDay: account.statement_closing_day,
+      paymentDueDay: account.payment_due_day,
+      outstandingDebtMinor: currentBalanceMinor,
+    });
   }
 
   return {
@@ -397,6 +543,199 @@ export const getAccountLedgerBalance = async (accountId, userId) => {
         ? formatMinorAsDecimal(account.credit_limit_minor)
         : null,
     availableCredit,
+    outstandingDebt,
+    utilizationPercentage,
+    billingInfo,
+  };
+};
+
+export const getCreditCardDetails = async (cardId, userId) => {
+  const account = await selectById(db, cardId, userId);
+  if (!account) return null;
+  if (account.type !== "credit_card") {
+    throw new AppError("Account is not a credit card", 400);
+  }
+
+  const ledger = await getAccountLedgerBalance(cardId, userId);
+  return {
+    account: toAccountJson(account),
+    balance: {
+      creditLimit: ledger.creditLimit,
+      outstandingDebt: ledger.outstandingDebt,
+      availableCredit: ledger.availableCredit,
+      utilizationPercentage: ledger.utilizationPercentage,
+      currencyCode: ledger.currencyCode,
+    },
+    billing: ledger.billingInfo,
+  };
+};
+
+export const createCardRepayment = async (userId, cardId, data) => {
+  if (Number(data.sourceAccountId) === Number(cardId)) {
+    throw new AppError("Source and credit card accounts must be different", 400);
+  }
+
+  return withTransaction(userId, async (connection) => {
+    const targetCard = await selectById(connection, cardId, userId, true);
+    if (!targetCard || targetCard.status !== "active") {
+      throw new AppError("Credit card not found or inactive", 400);
+    }
+    if (targetCard.type !== "credit_card") {
+      throw new AppError("Target account is not a credit card", 400);
+    }
+
+  const sourceAccount = await selectById(connection, data.sourceAccountId, userId, true);
+  if (!sourceAccount || sourceAccount.status !== "active") {
+    throw new AppError("Source account not found or inactive", 400);
+  }
+  if (sourceAccount.type === "credit_card") {
+    throw new AppError("Repayment must come from an asset account, not another credit card", 400);
+  }
+
+  const amountMinor = parseDecimalToMinor(data.amount);
+  if (amountMinor <= 0n) {
+    throw new AppError("Repayment amount must be greater than zero", 400);
+  }
+
+  const currencyCode = data.currencyCode ?? "INR";
+  const paymentDate = data.paymentDate;
+
+  // Fingerprint payment
+  const fingerprint = createHash("sha256")
+    .update(JSON.stringify({
+      sourceAccountId: data.sourceAccountId,
+      destinationAccountId: cardId,
+      amountMinor: amountMinor.toString(),
+      transferDate: paymentDate,
+      currencyCode,
+    }))
+    .digest("hex");
+
+  // Check idempotency in transfers
+  const [existingRows] = await connection.execute(
+    `SELECT t.id, t.user_id, t.source_account_id, t.destination_account_id,
+            t.amount_minor, t.currency_code, t.transfer_date, t.note,
+            t.client_transfer_key, t.transfer_fingerprint, t.created_at, t.updated_at,
+            sa.display_name AS source_account_name,
+            da.display_name AS destination_account_name
+       FROM transfers t
+       LEFT JOIN accounts sa ON sa.id = t.source_account_id
+       LEFT JOIN accounts da ON da.id = t.destination_account_id
+      WHERE t.user_id = ? AND t.client_transfer_key = ?
+      FOR UPDATE`,
+    [userId, data.clientPaymentKey],
+  );
+
+  if (existingRows[0]) {
+    if (existingRows[0].transfer_fingerprint !== fingerprint) {
+      throw new AppError("Idempotency key was already used for a different payment", 409);
+    }
+    const cardDebtMinor = await getAccountBalanceWithinTx(connection, cardId, userId);
+    const limitMinor = BigInt(targetCard.credit_limit_minor ?? 0);
+    return {
+      payment: toTransferJson(existingRows[0]),
+      created: false,
+      cardDebt: formatMinorAsDecimal(cardDebtMinor),
+      availableCredit: formatMinorAsDecimal(limitMinor - cardDebtMinor),
+    };
+  }
+
+  // Verify source account balance
+  const sourceBalanceMinor = await getAccountBalanceWithinTx(connection, data.sourceAccountId, userId);
+  if (sourceBalanceMinor < amountMinor) {
+    throw new AppError("Insufficient funds in source account", 400);
+  }
+
+  // Insert into transfers
+  const note = data.note ? data.note : `Repayment for ${targetCard.display_name}`;
+  const [result] = await connection.execute(
+    `INSERT INTO transfers (
+       user_id, source_account_id, destination_account_id,
+       amount_minor, currency_code, transfer_date, note,
+       client_transfer_key, transfer_fingerprint
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      userId,
+      data.sourceAccountId,
+      cardId,
+      amountMinor.toString(),
+      currencyCode,
+      paymentDate,
+      note,
+      data.clientPaymentKey,
+      fingerprint,
+    ],
+  );
+
+  const [insertedRows] = await connection.execute(
+    `SELECT t.id, t.user_id, t.source_account_id, t.destination_account_id,
+            t.amount_minor, t.currency_code, t.transfer_date, t.note,
+            t.client_transfer_key, t.transfer_fingerprint, t.created_at, t.updated_at,
+            sa.display_name AS source_account_name,
+            da.display_name AS destination_account_name
+       FROM transfers t
+       LEFT JOIN accounts sa ON sa.id = t.source_account_id
+       LEFT JOIN accounts da ON da.id = t.destination_account_id
+      WHERE t.id = ? AND t.user_id = ?`,
+    [result.insertId, userId],
+  );
+
+  const updatedSourceBalance = await getAccountBalanceWithinTx(connection, data.sourceAccountId, userId);
+  const updatedCardDebt = await getAccountBalanceWithinTx(connection, cardId, userId);
+  const limitMinor = BigInt(targetCard.credit_limit_minor ?? 0);
+
+  return {
+    payment: toTransferJson(insertedRows[0]),
+    created: true,
+    sourceBalance: formatMinorAsDecimal(updatedSourceBalance),
+    cardDebt: formatMinorAsDecimal(updatedCardDebt),
+    availableCredit: formatMinorAsDecimal(limitMinor - updatedCardDebt),
+  };
+});
+};
+
+export const getCardPayments = async (cardId, userId, filters = {}) => {
+  const card = await selectById(db, cardId, userId);
+  if (!card) return null;
+  if (card.type !== "credit_card") {
+    throw new AppError("Account is not a credit card", 400);
+  }
+
+  const page = Number(filters.page ?? 1);
+  const limit = Number(filters.limit ?? 20);
+  if (!Number.isSafeInteger(page) || page < 1) {
+    throw new AppError("Page must be a positive safe integer", 400);
+  }
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
+    throw new AppError("Limit must be a safe integer between 1 and 100", 400);
+  }
+  const offset = (page - 1) * limit;
+
+  const [rows] = await db.execute(
+    `SELECT t.id, t.user_id, t.source_account_id, t.destination_account_id,
+            t.amount_minor, t.currency_code, t.transfer_date, t.note,
+            t.client_transfer_key, t.transfer_fingerprint, t.created_at, t.updated_at,
+            sa.display_name AS source_account_name,
+            da.display_name AS destination_account_name
+       FROM transfers t
+       LEFT JOIN accounts sa ON sa.id = t.source_account_id
+       LEFT JOIN accounts da ON da.id = t.destination_account_id
+      WHERE t.user_id = ? AND t.destination_account_id = ?
+      ORDER BY t.transfer_date DESC, t.id DESC
+      LIMIT ${limit} OFFSET ${offset}`,
+    [userId, cardId],
+  );
+
+  const [countRows] = await db.execute(
+    `SELECT COUNT(*) AS total FROM transfers t WHERE t.user_id = ? AND t.destination_account_id = ?`,
+    [userId, cardId],
+  );
+
+  return {
+    payments: rows.map(toTransferJson),
+    total: Number(countRows[0].total),
+    page,
+    limit,
   };
 };
 

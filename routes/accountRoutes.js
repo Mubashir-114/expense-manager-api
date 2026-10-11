@@ -7,8 +7,12 @@ import {
   getAccountActivityLog,
   getAccountBalance,
   getAllAccounts,
+  getCreditCardInfo,
+  getCreditCardPayments,
   getSingleAccount,
   makeDefaultAccount,
+  repayCreditCardAccount,
+  updateBillingSettings,
 } from "../controllers/accountController.js";
 import {
   addAdjustment,
@@ -21,6 +25,9 @@ import {
   accountIdValidation,
   accountQueryValidation,
   accountUpdateValidation,
+  billingUpdateValidation,
+  paymentQueryValidation,
+  repaymentCreateValidation,
 } from "../validators/accountValidation.js";
 import {
   adjustmentCreateValidation,
@@ -40,5 +47,11 @@ router.get("/:id/balance", accountIdValidation, validate, getAccountBalance);
 router.get("/:id/activity", accountIdValidation, validate, getAccountActivityLog);
 router.post("/:id/adjustments", accountIdValidation, adjustmentCreateValidation, validate, addAdjustment);
 router.get("/:id/adjustments", adjustmentQueryValidation, validate, getAccountAdjustments);
+
+// Credit card management routes (Phase 3A.4)
+router.get("/:id/credit-card", accountIdValidation, validate, getCreditCardInfo);
+router.put("/:id/billing", accountIdValidation, billingUpdateValidation, validate, updateBillingSettings);
+router.post("/:id/repay", accountIdValidation, repaymentCreateValidation, validate, repayCreditCardAccount);
+router.get("/:id/payments", accountIdValidation, paymentQueryValidation, validate, getCreditCardPayments);
 
 export default router;
