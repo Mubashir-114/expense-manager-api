@@ -557,8 +557,24 @@ export const getCreditCardDetails = async (cardId, userId) => {
   }
 
   const ledger = await getAccountLedgerBalance(cardId, userId);
+  const accountJson = toAccountJson(account);
   return {
-    account: toAccountJson(account),
+    accountId: accountJson.id,
+    displayName: accountJson.displayName,
+    institutionName: accountJson.institutionName,
+    maskedLast4: accountJson.maskedLast4,
+    currencyCode: accountJson.currencyCode,
+    creditLimit: ledger.creditLimit,
+    outstandingDebt: ledger.outstandingDebt,
+    availableCredit: ledger.availableCredit,
+    creditBalance: "0.00",
+    utilizationPercentage: ledger.utilizationPercentage,
+    statementClosingDay: accountJson.statementClosingDay,
+    paymentDueDay: accountJson.paymentDueDay,
+    status: accountJson.status,
+    billingInfo: ledger.billingInfo,
+    billing: ledger.billingInfo,
+    account: accountJson,
     balance: {
       creditLimit: ledger.creditLimit,
       outstandingDebt: ledger.outstandingDebt,
@@ -566,7 +582,6 @@ export const getCreditCardDetails = async (cardId, userId) => {
       utilizationPercentage: ledger.utilizationPercentage,
       currencyCode: ledger.currencyCode,
     },
-    billing: ledger.billingInfo,
   };
 };
 
@@ -621,8 +636,7 @@ export const createCardRepayment = async (userId, cardId, data) => {
        FROM transfers t
        LEFT JOIN accounts sa ON sa.id = t.source_account_id
        LEFT JOIN accounts da ON da.id = t.destination_account_id
-      WHERE t.user_id = ? AND t.client_transfer_key = ?
-      FOR UPDATE`,
+      WHERE t.user_id = ? AND t.client_transfer_key = ?`,
     [userId, data.clientPaymentKey],
   );
 

@@ -63,8 +63,7 @@ export const createTransfer = async (userId, data) => withTransaction(userId, as
        FROM transfers t
        LEFT JOIN accounts sa ON sa.id = t.source_account_id
        LEFT JOIN accounts da ON da.id = t.destination_account_id
-      WHERE t.user_id = ? AND t.client_transfer_key = ?
-      FOR UPDATE`,
+      WHERE t.user_id = ? AND t.client_transfer_key = ?`,
     [userId, data.clientTransferKey],
   );
 

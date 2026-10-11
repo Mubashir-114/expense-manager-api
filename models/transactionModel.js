@@ -18,7 +18,7 @@ export const createTransaction = async (
   title,
   amount,
   transactionDate,
-  note,
+  note = null,
   accountId = null,
 ) => {
   if (accountId) {
@@ -35,7 +35,7 @@ export const createTransaction = async (
     `INSERT INTO transactions
         (user_id, category_id, account_id, type, title, amount, transaction_date, note)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [userId, categoryId, accountId || null, type, title, amount, transactionDate, note],
+    [userId, categoryId, accountId || null, type, title, amount, transactionDate, note ?? null],
   );
 
   return result.insertId;
@@ -184,7 +184,7 @@ export const updateTransaction = async (
   title,
   amount,
   transactionDate,
-  note,
+  note = null,
   accountId = undefined,
 ) => {
   if (accountId) {
@@ -212,7 +212,7 @@ export const updateTransaction = async (
         WHERE
             id=?
             AND user_id=?`;
-    params = [categoryId, accountId || null, type, title, amount, transactionDate, note, id, userId];
+    params = [categoryId, accountId || null, type, title, amount, transactionDate, note ?? null, id, userId];
   } else {
     sql = `UPDATE transactions
         SET
@@ -225,7 +225,7 @@ export const updateTransaction = async (
         WHERE
             id=?
             AND user_id=?`;
-    params = [categoryId, type, title, amount, transactionDate, note, id, userId];
+    params = [categoryId, type, title, amount, transactionDate, note ?? null, id, userId];
   }
 
   const [result] = await db.execute(sql, params);
@@ -269,7 +269,7 @@ export const createSmsTransaction = async (
   title,
   amount,
   transactionDate,
-  note,
+  note = null,
   smsHash,
   sender,
   bank,
@@ -286,7 +286,7 @@ export const createSmsTransaction = async (
       title,
       amount,
       transactionDate,
-      note,
+      note ?? null,
       smsHash,
       sender,
       bank,

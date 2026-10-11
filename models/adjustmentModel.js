@@ -57,8 +57,7 @@ export const createAdjustment = async (userId, accountId, data) => withTransacti
   const [existingRows] = await connection.execute(
     `SELECT ${ADJUSTMENT_COLUMNS}
        FROM account_adjustments
-      WHERE user_id = ? AND client_adjustment_key = ?
-      FOR UPDATE`,
+      WHERE user_id = ? AND client_adjustment_key = ?`,
     [userId, data.clientAdjustmentKey],
   );
 
