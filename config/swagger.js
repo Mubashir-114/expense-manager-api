@@ -1337,6 +1337,59 @@ const swaggerDocument = {
         },
       },
     },
+    "/dashboard": {
+      get: {
+        tags: ["Dashboard Analytics"],
+        summary: "Get comprehensive Dashboard 2.0 analytics and financial overview",
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          { in: "query", name: "period", schema: { type: "string", enum: ["current_month", "previous_month", "custom"] } },
+          { in: "query", name: "month", schema: { type: "string", pattern: "^\\d{4}-\\d{2}$", example: "2026-10" } },
+          { in: "query", name: "startDate", schema: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" } },
+          { in: "query", name: "endDate", schema: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" } },
+        ],
+        responses: {
+          200: {
+            description: "Dashboard 2.0 summary and analytics",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    success: { type: "boolean", example: true },
+                    message: { type: "string", example: "Dashboard summary fetched" },
+                    data: { type: "object" },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    "/dashboard/overview": {
+      get: {
+        tags: ["Dashboard Analytics"],
+        summary: "Get Dashboard 2.0 financial overview",
+        security: [{ BearerAuth: [] }],
+        responses: {
+          200: {
+            description: "Dashboard 2.0 overview",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    success: { type: "boolean", example: true },
+                    data: { type: "object" },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
     "/health": {
       get: {
         tags: ["Health Monitoring"],

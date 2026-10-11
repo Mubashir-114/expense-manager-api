@@ -152,3 +152,58 @@ test("SMS import response envelope is unchanged", async () => {
     logger.info = originalInfo;
   }
 });
+
+test("dashboard controllers maintain envelope compatibility and exact data shapes", async () => {
+  await withDb(
+    async (sql) => {
+      if (sql.includes("FROM accounts")) return [[]];
+      if (sql.includes("FROM transfers")) return [[]];
+      if (sql.includes("FROM account_adjustments")) return [[]];
+      if (sql.includes("smsImportedToday")) return [[{ smsImportedToday: 0, totalSmsImported: 0 }]];
+      if (sql.includes("INTERVAL 6 MONTH")) {
+        return [[
+          { month: "2026-10", type: "income", amount: "1000.00" },
+          { month: "2026-10", type: "expense", amount: "500.00" },
+        ]];
+      }
+      if (sql.includes("DATE_FORMAT(transaction_date, '%Y-%m')")) return [[{ month: "2026-10", income: "1000.00", expense: "500.00" }]];
+      if (sql.includes("LIMIT")) return [[{ id: 1, title: "Coffee", amount: "50.00", type: "expense", category: "Food" }]];
+      return [[]];
+    },
+    async () => {
+      const { dashboard, monthlySummary, categorySummary, recentTransactions } = await import("../controllers/dashboardController.js");
+
+      // 1. Main dashboard summary envelope
+      const dRes = await run(dashboard, { user: { id: 9 }, query: {} });
+      if (dRes.failure) throw dRes.failure;
+      assert.equal(dRes.statusCode, 200);
+      assert.equal(dRes.body.success, true);
+      assert.equal(dRes.body.message, "Dashboard summary fetched");
+      assert.equal(typeof dRes.body.data.totalIncome, "number");
+      assert.equal(typeof dRes.body.data.totalExpense, "number");
+      assert.equal(typeof dRes.body.data.balance, "number");
+      assert.ok(dRes.body.data.overview);
+
+      // 2. Monthly summary envelope
+      const mRes = await run(monthlySummary, { user: { id: 9 } });
+      assert.equal(mRes.statusCode, 200);
+      assert.equal(mRes.body.success, true);
+      assert.equal(mRes.body.message, "Monthly summary fetched");
+      assert.ok(Array.isArray(mRes.body.data));
+
+      // 3. Category summary envelope
+      const cRes = await run(categorySummary, { user: { id: 9 }, query: {} });
+      assert.equal(cRes.statusCode, 200);
+      assert.equal(cRes.body.success, true);
+      assert.equal(cRes.body.message, "Category summary fetched");
+      assert.ok(Array.isArray(cRes.body.data));
+
+      // 4. Recent transactions envelope
+      const rRes = await run(recentTransactions, { user: { id: 9 }, query: { limit: 5 } });
+      assert.equal(rRes.statusCode, 200);
+      assert.equal(rRes.body.success, true);
+      assert.equal(rRes.body.message, "Recent transactions fetched");
+      assert.ok(Array.isArray(rRes.body.data));
+    },
+  );
+});
