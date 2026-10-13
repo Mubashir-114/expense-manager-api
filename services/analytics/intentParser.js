@@ -27,6 +27,16 @@ export const SUPPORTED_INTENTS = Object.freeze([
   "goal_recommended_saving",
   "goal_what_if_expense",
   "goal_forecast_explanation",
+  "fin_greeting",
+  "fin_smalltalk",
+  "fin_concern_spending",
+  "fin_concern_savings",
+  "fin_preference_update",
+  "fin_capabilities",
+  "fin_navigation",
+  "fin_action_goal",
+  "fin_report_request",
+  "out_of_domain",
 ]);
 
 export const SUGGESTED_QUESTIONS = Object.freeze([
@@ -325,6 +335,282 @@ export const parseUserQuery = ({
     category ||
     detectCategoryFromText(lower) ||
     (conversationContext?.activeCategory ? conversationContext.activeCategory : null);
+
+  // ── 5E.1: Explicit Preference Updates ──────────────────────────────────────
+  if (
+    /^(?:keep\s*(?:your\s*)?explanations?\s*short|be\s*concise|keep\s*it\s*short|short\s*(?:answers?|responses?)\s*please|make\s*it\s*brief)[\s!.,?]*$/i.test(lower)
+  ) {
+    return {
+      intent: "fin_preference_update",
+      preferenceUpdate: { responseStyle: "concise" },
+      isRefusal: false,
+      question: normalizedText,
+      confidence: "high",
+      suggestions: SUGGESTED_QUESTIONS,
+      conversationContext,
+    };
+  }
+
+  if (
+    /^(?:give\s*(?:me\s*)?detailed\s*explanations?|be\s*detailed|detailed\s*(?:answers?|responses?)\s*please|explain\s*in\s*detail)[\s!.,?]*$/i.test(lower)
+  ) {
+    return {
+      intent: "fin_preference_update",
+      preferenceUpdate: { responseStyle: "detailed" },
+      isRefusal: false,
+      question: normalizedText,
+      confidence: "high",
+      suggestions: SUGGESTED_QUESTIONS,
+      conversationContext,
+    };
+  }
+
+  const nameMatch = lower.match(/^(?:call\s*me\s+([a-zA-Z]{2,20})|my\s*name\s*is\s+([a-zA-Z]{2,20}))[\s!.,?]*$/i);
+  if (nameMatch) {
+    const rawName = nameMatch[1] || nameMatch[2];
+    const preferredName = rawName.charAt(0).toUpperCase() + rawName.slice(1).toLowerCase();
+    return {
+      intent: "fin_preference_update",
+      preferenceUpdate: { preferredName },
+      isRefusal: false,
+      question: normalizedText,
+      confidence: "high",
+      suggestions: SUGGESTED_QUESTIONS,
+      conversationContext,
+    };
+  }
+
+  if (
+    /^(?:reset\s*(?:my\s*)?preferences?|clear\s*(?:my\s*)?preferences?|reset\s*companion)[\s!.,?]*$/i.test(lower)
+  ) {
+    return {
+      intent: "fin_preference_update",
+      preferenceUpdate: { reset: true },
+      isRefusal: false,
+      question: normalizedText,
+      confidence: "high",
+      suggestions: SUGGESTED_QUESTIONS,
+      conversationContext,
+    };
+  }
+
+  // ── 5E.1: FIN Greetings ───────────────────────────────────────────────────
+  if (
+    /^(?:hey|hi|hello|good\s*(?:morning|afternoon|evening)|howdy|greetings)\s*(?:fin|fintrack|there)?[\s!.,?]*$/i.test(lower) ||
+    lower === "hey fin" || lower === "hi fin" || lower === "hello fin"
+  ) {
+    return {
+      intent: "fin_greeting",
+      isRefusal: false,
+      question: normalizedText,
+      confidence: "high",
+      suggestions: SUGGESTED_QUESTIONS,
+      conversationContext,
+    };
+  }
+
+  // ── 5E.1: FIN Smalltalk ───────────────────────────────────────────────────
+  if (
+    /^(?:how\s*are\s*you|how(?:'s|\s*is)\s*it\s*going|how\s*are\s*things|what(?:'s|\s*is)\s*up|how\s*do\s*you\s*do)[\s!.,?]*$/i.test(lower)
+  ) {
+    return {
+      intent: "fin_smalltalk",
+      subType: "how_are_you",
+      isRefusal: false,
+      question: normalizedText,
+      confidence: "high",
+      suggestions: SUGGESTED_QUESTIONS,
+      conversationContext,
+    };
+  }
+
+  if (
+    /^(?:who\s*are\s*you|what(?:'s|\s*is)\s*your\s*name|tell\s*me\s*about\s*yourself|what\s*are\s*you)[\s!.,?]*$/i.test(lower)
+  ) {
+    return {
+      intent: "fin_smalltalk",
+      subType: "who_are_you",
+      isRefusal: false,
+      question: normalizedText,
+      confidence: "high",
+      suggestions: SUGGESTED_QUESTIONS,
+      conversationContext,
+    };
+  }
+
+  if (
+    /^(?:thank\s*you|thanks|thank\s*you\s*so\s*much|thanks\s*(?:fin|a\s*lot))[\s!.,?]*$/i.test(lower)
+  ) {
+    return {
+      intent: "fin_smalltalk",
+      subType: "thank_you",
+      isRefusal: false,
+      question: normalizedText,
+      confidence: "high",
+      suggestions: SUGGESTED_QUESTIONS,
+      conversationContext,
+    };
+  }
+
+  if (
+    /^(?:bye|goodbye|see\s*you|see\s*ya|catch\s*you\s*later)[\s!.,?]*$/i.test(lower)
+  ) {
+    return {
+      intent: "fin_smalltalk",
+      subType: "goodbye",
+      isRefusal: false,
+      question: normalizedText,
+      confidence: "high",
+      suggestions: SUGGESTED_QUESTIONS,
+      conversationContext,
+    };
+  }
+
+  // ── 5E.1: FIN Capabilities & Help ─────────────────────────────────────────
+  if (
+    /^(?:what\s*(?:can|do)\s*you\s*do|what\s*are\s*your\s*capabilities|how\s*can\s*you\s*help(?: me)?|help\s*me|what\s*features\s*do\s*you\s*support)[\s!.,?]*$/i.test(lower)
+  ) {
+    return {
+      intent: "fin_capabilities",
+      isRefusal: false,
+      question: normalizedText,
+      confidence: "high",
+      suggestions: SUGGESTED_QUESTIONS,
+      conversationContext,
+    };
+  }
+
+  // ── 5E.1: Financial Concerns & Emotional Reassurance ──────────────────────
+  if (
+    /(?:i(?:'m|\s*am)\s*spending\s*too\s*much|spend\s*too\s*much\s*money|feel\s*like\s*i\s*spend\s*too\s*much|i(?:'m|\s*am)\s*overspending|i(?:'m|\s*am)\s*broke|spending\s*too\s*much\s*lately)/i.test(lower)
+  ) {
+    return {
+      intent: "fin_concern_spending",
+      isRefusal: false,
+      question: normalizedText,
+      confidence: "high",
+      period: period || "current_month",
+      suggestions: SUGGESTED_QUESTIONS,
+      conversationContext,
+    };
+  }
+
+  if (
+    /(?:worried\s*about\s*(?:my\s*)?savings?|stressed\s*about\s*(?:my\s*)?money|can(?:'t|\s*not)\s*save\s*(?:any\s*)?money|anxious\s*about\s*(?:my\s*)?finances?|worried\s*about\s*money)/i.test(lower)
+  ) {
+    return {
+      intent: "fin_concern_savings",
+      isRefusal: false,
+      question: normalizedText,
+      confidence: "high",
+      period: period || "current_month",
+      suggestions: SUGGESTED_QUESTIONS,
+      conversationContext,
+    };
+  }
+
+  // ── 5E.4: Feature Navigation ──────────────────────────────────────────────
+  if (/(?:take\s*me\s*to|go\s*to|open|show)\s+(?:my\s+)?budgets?/i.test(lower) && !/exceeding|status|over/i.test(lower)) {
+    return {
+      intent: "fin_navigation",
+      targetRoute: "/budgets",
+      featureName: "Budgets",
+      isRefusal: false,
+      question: normalizedText,
+      confidence: "high",
+      suggestions: SUGGESTED_QUESTIONS,
+      conversationContext,
+    };
+  }
+
+  if (/(?:take\s*me\s*to|go\s*to|open|show)\s+(?:my\s+)?reports?/i.test(lower) && !/last\s*month|expense\s*report/i.test(lower)) {
+    return {
+      intent: "fin_navigation",
+      targetRoute: "/reports",
+      featureName: "Reports",
+      isRefusal: false,
+      question: normalizedText,
+      confidence: "high",
+      suggestions: SUGGESTED_QUESTIONS,
+      conversationContext,
+    };
+  }
+
+  if (/(?:take\s*me\s*to|go\s*to|open|show)\s+(?:my\s+)?(?:goals?|planning)/i.test(lower) && !/closest|reach|complete|help\s*me\s*save/i.test(lower)) {
+    return {
+      intent: "fin_navigation",
+      targetRoute: "/planning",
+      featureName: "Savings Goals & Planning",
+      isRefusal: false,
+      question: normalizedText,
+      confidence: "high",
+      suggestions: SUGGESTED_QUESTIONS,
+      conversationContext,
+    };
+  }
+
+  if (/(?:take\s*me\s*to|go\s*to|open|show)\s+(?:my\s+)?transactions?/i.test(lower) && !/largest|biggest/i.test(lower)) {
+    return {
+      intent: "fin_navigation",
+      targetRoute: "/transactions",
+      featureName: "Transactions",
+      isRefusal: false,
+      question: normalizedText,
+      confidence: "high",
+      suggestions: SUGGESTED_QUESTIONS,
+      conversationContext,
+    };
+  }
+
+  if (/(?:take\s*me\s*to|go\s*to|open|show)\s+(?:my\s+)?dashboard/i.test(lower) || /^(?:go\s*home|home\s*screen)$/i.test(lower)) {
+    return {
+      intent: "fin_navigation",
+      targetRoute: "/dashboard",
+      featureName: "Dashboard",
+      isRefusal: false,
+      question: normalizedText,
+      confidence: "high",
+      suggestions: SUGGESTED_QUESTIONS,
+      conversationContext,
+    };
+  }
+
+  // ── 5E.4: Goal Planning & Preparation ─────────────────────────────────────
+  if (
+    /(?:help\s*me\s*save|want\s*to\s*save|plan\s*(?:to\s*)?save)\s*(?:(?:(?:₹|rs\.?|inr|\$)\s*)?([0-9,]+(?:\.[0-9]+)?))?(?:\s*for\s+(?:a\s+|an\s+)?([a-zA-Z0-9\s-]+?))?(?:\?|$)/i.test(lower) &&
+    !/can\s*i\s*afford/i.test(lower)
+  ) {
+    const amount = extractAmountFromText(normalizedText) || 50000;
+    const goalNameMatch = normalizedText.match(/(?:for\s+(?:a\s+|an\s+)?)([a-zA-Z0-9\s-]+?)(?:\?|$)/i);
+    const goalName = goalNameMatch && goalNameMatch[1] ? goalNameMatch[1].trim() : "New Goal";
+    return {
+      intent: "fin_action_goal",
+      goalName,
+      targetAmount: amount,
+      isRefusal: false,
+      question: normalizedText,
+      confidence: "high",
+      suggestions: SUGGESTED_QUESTIONS,
+      conversationContext,
+    };
+  }
+
+  // ── 5E.4: Reporting Integration ───────────────────────────────────────────
+  if (
+    /(?:show|give|display|get)\s*(?:me\s+)?(?:last|previous)\s*month(?:'s)?\s*(?:expense\s*)?report/i.test(lower) ||
+    /(?:show|give|display|get)\s*(?:me\s+)?(?:my\s+)?(?:monthly|expense)\s*report/i.test(lower)
+  ) {
+    return {
+      intent: "fin_report_request",
+      periodLabel: /last|previous/i.test(lower) ? "last month" : "this month",
+      isRefusal: false,
+      question: normalizedText,
+      period: /last|previous/i.test(lower) ? "previous_month" : "current_month",
+      confidence: "high",
+      suggestions: SUGGESTED_QUESTIONS,
+      conversationContext,
+    };
+  }
 
   // ── Multi-Turn Follow-Up Resolution ─────────────────────────────────────────
 
@@ -812,6 +1098,35 @@ export const parseUserQuery = ({
           question: `Which category increased the most?`,
         },
       ],
+      suggestions: SUGGESTED_QUESTIONS,
+      conversationContext,
+    };
+  }
+
+  // ── 5E.1: Out-of-Domain Refusal Check ─────────────────────────────────────
+  const isOutOfDomain =
+    /(?:python|javascript|typescript|c\+\+|java|react|angular|vue|html|css|docker|kubernetes|git\s*(?:commit|push|pull)|write\s+(?:a\s+)?(?:code|script|program|function)|debug\s+my)/i.test(lower) ||
+    /(?:weather\s*forecast|what(?:'s|\s+is)\s+the\s+weather|temperature\s+outside|is\s+it\s+raining)/i.test(lower) ||
+    /(?:capital\s+of|who\s+is\s+(?:the\s+)?(?:president|prime\s+minister)|population\s+of|tell\s+me\s+a\s+joke|write\s+(?:a\s+)?(?:poem|essay|story)|recipe\s+for|how\s+to\s+(?:cook|bake))/i.test(lower) ||
+    /(?:cricket\s*score|football\s*match|soccer\s*game|who\s+won\s+the\s*(?:match|game|cup|ipl|world\s*cup))/i.test(lower);
+
+  if (isOutOfDomain) {
+    let topic = "general knowledge and outside topics";
+    if (/(?:python|code|script|function|program)/i.test(lower)) topic = "programming and code";
+    else if (/(?:weather|temperature|rain)/i.test(lower)) topic = "the weather";
+    else if (/(?:capital|president|minister|population)/i.test(lower)) topic = "general trivia and politics";
+    else if (/(?:recipe|cook|bake)/i.test(lower)) topic = "cooking and recipes";
+    else if (/(?:cricket|football|soccer|score|match|ipl)/i.test(lower)) topic = "sports and game scores";
+
+    return {
+      intent: "unsupported",
+      topic,
+      isRefusal: false,
+      confidence: "none",
+      refusalReason: "unsupported_query",
+      refusalMessage: `I'm FIN, your FinTrack financial companion! I don't know much about ${topic} — my specialty is keeping your money, budgets, goals, and reports in great shape. What financial topic shall we check?`,
+      question: normalizedText,
+      period: period || "current_month",
       suggestions: SUGGESTED_QUESTIONS,
       conversationContext,
     };

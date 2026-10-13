@@ -7,6 +7,8 @@
  * Clear distinction between verified calculated facts and deterministic recommendations.
  */
 
+import { inferCharacterStateForResult, FIN_CHARACTER_STATES } from "./companionEngine.js";
+
 const escapeText = (str) => {
   if (typeof str !== "string") return "";
   return str.replace(/[<>&"']/g, (char) => {
@@ -173,8 +175,16 @@ export const formatTemplateResponse = ({
   clarificationOptions,
   conversationContext,
   suggestions = [],
+  characterState: explicitCharacterState,
+  actionPreview,
+  navigationAction,
+  preferences,
+  answer: explicitAnswer,
 }) => {
+  const isConcise = preferences?.responseStyle === "concise";
+
   if (isRefusal || intent === "unsupported") {
+    const charState = explicitCharacterState || FIN_CHARACTER_STATES.CONFUSED;
     return {
       intent: intent || "unsupported",
       isRefusal: Boolean(isRefusal),
@@ -182,8 +192,13 @@ export const formatTemplateResponse = ({
       refusalReason: refusalReason || "unsupported_query",
       period: period ? { startDate: period.startDate, endDate: period.endDate, label: period.label } : null,
       metrics: null,
+      characterState: charState,
+      actionPreview: actionPreview || null,
+      navigationAction: navigationAction || null,
+      responseStyle: preferences?.responseStyle || "friendly",
       answer:
         refusalMessage ||
+        explicitAnswer ||
         "This query is not supported by FinTrack Phase 5B assistant. Please select from one of the supported financial analytics questions.",
       provenance: null,
       privacyNotice: PRIVACY_NOTICE,
@@ -201,6 +216,10 @@ export const formatTemplateResponse = ({
       confidence: "low",
       period: null,
       metrics: null,
+      characterState: explicitCharacterState || FIN_CHARACTER_STATES.CONFUSED,
+      actionPreview: actionPreview || null,
+      navigationAction: navigationAction || null,
+      responseStyle: preferences?.responseStyle || "friendly",
       answer: `I noticed your query regarding "${category || question}" could mean a few things. Please choose which financial view you'd like to inspect:`,
       clarificationOptions: clarificationOptions || [],
       provenance: null,
@@ -226,21 +245,24 @@ export const formatTemplateResponse = ({
   }
 
   const recordCount =
-    metrics.transactionCount ||
-    metrics.totalTransactions ||
-    (metrics.largestExpenses ? metrics.largestExpenses.length : 0) ||
+    metrics?.transactionCount ||
+    metrics?.totalTransactions ||
+    (metrics?.largestExpenses ? metrics.largestExpenses.length : 0) ||
     0;
 
-  const provenance = buildProvenance({
-    recordCount,
-    startDate: period.startDate,
-    endDate: period.endDate,
-  });
+  const provenance = period
+    ? buildProvenance({
+        recordCount,
+        startDate: period.startDate,
+        endDate: period.endDate,
+      })
+    : null;
 
-  let answer = "";
+  let answer = explicitAnswer || "";
   let resolvedCategory = category;
 
-  switch (intent) {
+  if (!explicitAnswer) {
+    switch (intent) {
     case "total_spending": {
       const formattedTotal = formatCurrency(metrics.totalSpending);
       const count = metrics.transactionCount;
@@ -540,6 +562,7 @@ export const formatTemplateResponse = ({
 
     default:
       answer = `Analysis completed for ${period.label}.`;
+    }
   }
 
   const updatedConversationContext = {
@@ -552,14 +575,23 @@ export const formatTemplateResponse = ({
 
   const followUpSuggestions = buildFollowUpSuggestions(intent, metrics, resolvedCategory);
 
+  const finalCharacterState =
+    explicitCharacterState || inferCharacterStateForResult(intent, metrics, isRefusal);
+
   return {
     intent,
-    period: {
-      startDate: period.startDate,
-      endDate: period.endDate,
-      label: period.label,
-    },
+    period: period
+      ? {
+          startDate: period.startDate,
+          endDate: period.endDate,
+          label: period.label,
+        }
+      : null,
     metrics,
+    characterState: finalCharacterState,
+    actionPreview: actionPreview || null,
+    navigationAction: navigationAction || null,
+    responseStyle: preferences?.responseStyle || "friendly",
     answer,
     confidence: confidence || "high",
     provenance,

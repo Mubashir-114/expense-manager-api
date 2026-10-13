@@ -21,6 +21,22 @@ import {
   getGoals,
   getContributions,
 } from "../../models/goalModel.js";
+import {
+  composeGreetingResponse,
+  composeSmalltalkResponse,
+  composeEmotionalConcernResponse,
+  composeNavigationResponse,
+  composeGoalPlanningResponse,
+  composeReportRequestResponse,
+  composeOutOfDomainResponse,
+  composeCalculationExplanation,
+  FIN_CHARACTER_STATES,
+} from "./companionEngine.js";
+import {
+  getCompanionPreferences,
+  upsertCompanionPreferences,
+  deleteCompanionPreferences,
+} from "../../models/companionModel.js";
 
 const getDaysInMonth = (year, month) => new Date(Date.UTC(year, month, 0)).getUTCDate();
 
@@ -1010,8 +1026,14 @@ const computeGoalForecastExplanation = async (userId, period, options = {}) => {
  * Main query dispatcher for Phase 5B Assistant & Analytics.
  */
 export const executeAnalyticsQuery = async (userId, parsedQuery) => {
+  const preferences = await getCompanionPreferences(userId);
+
   // If query was refused or classified as unsupported by parser, return safe formatted refusal
   if (parsedQuery.isRefusal || parsedQuery.intent === "unsupported") {
+    let charState = FIN_CHARACTER_STATES.CONFUSED;
+    if (parsedQuery.refusalReason === "out_of_domain") {
+      charState = FIN_CHARACTER_STATES.CONFUSED;
+    }
     return formatTemplateResponse({
       intent: parsedQuery.intent,
       isRefusal: parsedQuery.isRefusal,
@@ -1019,8 +1041,197 @@ export const executeAnalyticsQuery = async (userId, parsedQuery) => {
       refusalMessage: parsedQuery.refusalMessage,
       question: parsedQuery.question,
       confidence: parsedQuery.confidence,
+      characterState: charState,
       suggestions: parsedQuery.suggestions,
       conversationContext: parsedQuery.conversationContext,
+      preferences,
+    });
+  }
+
+  // ── 5E.1: Explicit Preference Updates ──────────────────────────────────────
+  if (parsedQuery.intent === "fin_preference_update") {
+    let answer = "Your companion preferences have been updated.";
+    if (parsedQuery.preferenceUpdate?.reset) {
+      await deleteCompanionPreferences(userId);
+      answer = "I've reset your companion preferences to the default settings.";
+    } else if (parsedQuery.preferenceUpdate) {
+      await upsertCompanionPreferences(userId, parsedQuery.preferenceUpdate);
+      if (parsedQuery.preferenceUpdate.responseStyle === "concise") {
+        answer = "Sure. I'll keep things brief from now on.";
+      } else if (parsedQuery.preferenceUpdate.responseStyle === "detailed") {
+        answer = "Understood. I will provide detailed explanations and breakdowns for future questions.";
+      } else if (parsedQuery.preferenceUpdate.preferredName) {
+        answer = `Got it! I will remember to call you ${parsedQuery.preferenceUpdate.preferredName}.`;
+      }
+    }
+    const updatedPreferences = await getCompanionPreferences(userId);
+    return formatTemplateResponse({
+      intent: "fin_preference_update",
+      isRefusal: false,
+      confidence: "high",
+      question: parsedQuery.question,
+      characterState: FIN_CHARACTER_STATES.HAPPY,
+      answer,
+      suggestions: parsedQuery.suggestions,
+      conversationContext: parsedQuery.conversationContext,
+      preferences: updatedPreferences,
+    });
+  }
+
+  // ── 5E.1: FIN Greetings ───────────────────────────────────────────────────
+  if (parsedQuery.intent === "fin_greeting") {
+    const res = composeGreetingResponse({
+      preferences,
+      turnCount: parsedQuery.conversationContext?.turnCount || 0,
+    });
+    return formatTemplateResponse({
+      intent: "fin_greeting",
+      isRefusal: false,
+      confidence: "high",
+      question: parsedQuery.question,
+      characterState: res.characterState,
+      answer: res.answer,
+      suggestions: res.suggestions,
+      conversationContext: parsedQuery.conversationContext,
+      preferences,
+    });
+  }
+
+  // ── 5E.1: FIN Smalltalk ───────────────────────────────────────────────────
+  if (parsedQuery.intent === "fin_smalltalk") {
+    const res = composeSmalltalkResponse({
+      subType: parsedQuery.subType,
+      preferences,
+      turnCount: parsedQuery.conversationContext?.turnCount || 0,
+    });
+    return formatTemplateResponse({
+      intent: "fin_smalltalk",
+      isRefusal: false,
+      confidence: "high",
+      question: parsedQuery.question,
+      characterState: res.characterState,
+      answer: res.answer,
+      suggestions: res.suggestions,
+      conversationContext: parsedQuery.conversationContext,
+      preferences,
+    });
+  }
+
+  // ── 5E.1: Financial Concerns & Emotional Reassurance ──────────────────────
+  if (parsedQuery.intent === "fin_concern_spending") {
+    const res = composeEmotionalConcernResponse({
+      concernType: "spending",
+      preferences,
+      turnCount: parsedQuery.conversationContext?.turnCount || 0,
+    });
+    return formatTemplateResponse({
+      intent: "fin_concern_spending",
+      isRefusal: false,
+      confidence: "high",
+      question: parsedQuery.question,
+      characterState: res.characterState,
+      answer: res.answer,
+      suggestions: res.suggestions,
+      conversationContext: parsedQuery.conversationContext,
+      preferences,
+    });
+  }
+
+  if (parsedQuery.intent === "fin_concern_savings") {
+    const res = composeEmotionalConcernResponse({
+      concernType: "savings",
+      preferences,
+      turnCount: parsedQuery.conversationContext?.turnCount || 0,
+    });
+    return formatTemplateResponse({
+      intent: "fin_concern_savings",
+      isRefusal: false,
+      confidence: "high",
+      question: parsedQuery.question,
+      characterState: res.characterState,
+      answer: res.answer,
+      suggestions: res.suggestions,
+      conversationContext: parsedQuery.conversationContext,
+      preferences,
+    });
+  }
+
+  // ── 5E.1: FIN Capabilities & Help ─────────────────────────────────────────
+  if (parsedQuery.intent === "fin_capabilities") {
+    const answer = `I'm FIN, your personal FinTrack financial companion! Here is what I can do for you:\n• Track spending totals and breakdowns by category\n• Monitor budgets and remaining daily allowances\n• Inspect savings goals progress and calculate time-to-goal\n• Project cash-flow forecasts and test what-if scenarios\n• Prepare savings goals and contributions with your confirmation\n• Navigate directly to any FinTrack feature\n\nAll calculations are 100% deterministic and private to your account.`;
+    return formatTemplateResponse({
+      intent: "fin_capabilities",
+      isRefusal: false,
+      confidence: "high",
+      question: parsedQuery.question,
+      characterState: FIN_CHARACTER_STATES.EXPLAINING,
+      answer,
+      suggestions: parsedQuery.suggestions,
+      conversationContext: parsedQuery.conversationContext,
+      preferences,
+    });
+  }
+
+  // ── 5E.4: Feature Navigation ──────────────────────────────────────────────
+  if (parsedQuery.intent === "fin_navigation") {
+    const res = composeNavigationResponse({
+      targetRoute: parsedQuery.targetRoute,
+      featureName: parsedQuery.featureName,
+      preferences,
+    });
+    return formatTemplateResponse({
+      intent: "fin_navigation",
+      isRefusal: false,
+      confidence: "high",
+      question: parsedQuery.question,
+      characterState: res.characterState,
+      answer: res.answer,
+      navigationAction: res.navigationAction,
+      suggestions: res.suggestions,
+      conversationContext: parsedQuery.conversationContext,
+      preferences,
+    });
+  }
+
+  // ── 5E.4: Goal Planning & Preparation ─────────────────────────────────────
+  if (parsedQuery.intent === "fin_action_goal") {
+    const res = composeGoalPlanningResponse({
+      goalName: parsedQuery.goalName,
+      targetAmount: parsedQuery.targetAmount,
+      months: parsedQuery.months,
+      preferences,
+    });
+    return formatTemplateResponse({
+      intent: "fin_action_goal",
+      isRefusal: false,
+      confidence: "high",
+      question: parsedQuery.question,
+      characterState: res.characterState,
+      answer: res.answer,
+      actionPreview: res.actionPreview,
+      suggestions: res.suggestions,
+      conversationContext: parsedQuery.conversationContext,
+      preferences,
+    });
+  }
+
+  // ── 5E.4: Reporting Integration ───────────────────────────────────────────
+  if (parsedQuery.intent === "fin_report_request") {
+    const res = composeReportRequestResponse({
+      periodLabel: parsedQuery.periodLabel,
+      preferences,
+    });
+    return formatTemplateResponse({
+      intent: "fin_report_request",
+      isRefusal: false,
+      confidence: "high",
+      question: parsedQuery.question,
+      characterState: res.characterState,
+      answer: res.answer,
+      navigationAction: res.navigationAction,
+      suggestions: res.suggestions,
+      conversationContext: parsedQuery.conversationContext,
+      preferences,
     });
   }
 
@@ -1035,6 +1246,7 @@ export const executeAnalyticsQuery = async (userId, parsedQuery) => {
       clarificationOptions: parsedQuery.clarificationOptions,
       suggestions: parsedQuery.suggestions,
       conversationContext: parsedQuery.conversationContext,
+      preferences,
     });
   }
 
@@ -1140,6 +1352,7 @@ export const executeAnalyticsQuery = async (userId, parsedQuery) => {
     comparisonType: parsedQuery.comparisonType,
     conversationContext: parsedQuery.conversationContext,
     suggestions: parsedQuery.suggestions,
+    preferences,
   });
 };
 

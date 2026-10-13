@@ -18,6 +18,13 @@ const ALLOWED_CONTEXT_FIELDS = Object.freeze([
   "activeCategory",
   "activeMonth",
   "turnCount",
+  "selectedGoalId",
+  "selectedAccountId",
+  "currentReport",
+  "currentScenario",
+  "previousAction",
+  "characterState",
+  "pendingAction",
 ]);
 
 const ALLOWED_INSIGHTS_QUERY_FIELDS = Object.freeze([
@@ -245,4 +252,102 @@ export const analyticsAlertsValidation = [
     .optional({ values: "falsy" })
     .isBoolean()
     .withMessage("enableProactiveInsights must be a boolean"),
+];
+
+const ALLOWED_COMPANION_PREF_FIELDS = Object.freeze([
+  "preferredName",
+  "responseStyle",
+  "enablePersonalizedGreetings",
+  "enableCharacterAnimations",
+  "priorityGoalId",
+  "focusCategory",
+]);
+
+export const companionPreferencesValidation = [
+  body().custom((value, { req }) => {
+    if (typeof req.body !== "object" || req.body === null || Array.isArray(req.body)) {
+      throw new Error("Request body must be a JSON object");
+    }
+    const extraFields = Object.keys(req.body).filter(
+      (k) => !ALLOWED_COMPANION_PREF_FIELDS.includes(k)
+    );
+    if (extraFields.length > 0) {
+      throw new Error(`Unknown field(s) not allowed: ${extraFields.join(", ")}`);
+    }
+    return true;
+  }),
+
+  body("preferredName")
+    .optional({ values: "null" })
+    .isString()
+    .withMessage("preferredName must be a string")
+    .isLength({ max: 100 })
+    .withMessage("preferredName must not exceed 100 characters"),
+
+  body("responseStyle")
+    .optional({ values: "falsy" })
+    .isString()
+    .isIn(["friendly", "concise", "detailed"])
+    .withMessage("responseStyle must be one of: friendly, concise, detailed"),
+
+  body("enablePersonalizedGreetings")
+    .optional()
+    .isBoolean()
+    .withMessage("enablePersonalizedGreetings must be a boolean"),
+
+  body("enableCharacterAnimations")
+    .optional()
+    .isBoolean()
+    .withMessage("enableCharacterAnimations must be a boolean"),
+
+  body("priorityGoalId")
+    .optional({ values: "null" })
+    .custom((val) => {
+      if (val === null) return true;
+      const num = Number(val);
+      if (!Number.isInteger(num) || num <= 0) {
+        throw new Error("priorityGoalId must be a positive integer or null");
+      }
+      return true;
+    }),
+
+  body("focusCategory")
+    .optional({ values: "null" })
+    .isString()
+    .withMessage("focusCategory must be a string")
+    .isLength({ max: 100 })
+    .withMessage("focusCategory must not exceed 100 characters"),
+];
+
+const ALLOWED_ACTION_CONFIRM_FIELDS = Object.freeze([
+  "capabilityId",
+  "parameters",
+]);
+
+export const companionActionConfirmValidation = [
+  body().custom((value, { req }) => {
+    if (typeof req.body !== "object" || req.body === null || Array.isArray(req.body)) {
+      throw new Error("Request body must be a JSON object");
+    }
+    const extraFields = Object.keys(req.body).filter(
+      (k) => !ALLOWED_ACTION_CONFIRM_FIELDS.includes(k)
+    );
+    if (extraFields.length > 0) {
+      throw new Error(`Unknown field(s) not allowed: ${extraFields.join(", ")}`);
+    }
+    return true;
+  }),
+
+  body("capabilityId")
+    .notEmpty()
+    .withMessage("capabilityId is required")
+    .isString()
+    .isIn(["create_savings_goal", "add_goal_contribution", "update_companion_preferences"])
+    .withMessage("capabilityId must be an authorized action capability"),
+
+  body("parameters")
+    .notEmpty()
+    .withMessage("parameters object is required")
+    .isObject()
+    .withMessage("parameters must be a JSON object"),
 ];

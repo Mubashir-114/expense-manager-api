@@ -7,12 +7,18 @@ import {
   analyticsQueryValidation,
   analyticsInsightsValidation,
   analyticsAlertsValidation,
+  companionPreferencesValidation,
+  companionActionConfirmValidation,
 } from "../validators/analyticsValidation.js";
 import {
   queryAnalytics,
   getInsights,
   getCapabilities,
   getProactiveAlerts,
+  getCompanionPreferencesController,
+  updateCompanionPreferencesController,
+  resetCompanionPreferencesController,
+  confirmCompanionActionController,
 } from "../controllers/analyticsController.js";
 
 const router = express.Router();
@@ -61,6 +67,40 @@ router.get(
   analyticsAlertsValidation,
   validate,
   getProactiveAlerts
+);
+
+// ── Phase 5E: FIN Companion Routes ─────────────────────────────────────────
+
+// Get persistent relationship preferences
+router.get(
+  "/companion/preferences",
+  analyticsRateLimiter,
+  getCompanionPreferencesController
+);
+
+// Update persistent relationship preferences
+router.put(
+  "/companion/preferences",
+  analyticsRateLimiter,
+  companionPreferencesValidation,
+  validate,
+  updateCompanionPreferencesController
+);
+
+// Reset persistent relationship preferences to defaults
+router.delete(
+  "/companion/preferences",
+  analyticsRateLimiter,
+  resetCompanionPreferencesController
+);
+
+// Confirm and execute an authorized application write action (e.g. goal creation)
+router.post(
+  "/companion/action/confirm",
+  analyticsRateLimiter,
+  companionActionConfirmValidation,
+  validate,
+  confirmCompanionActionController
 );
 
 export default router;
