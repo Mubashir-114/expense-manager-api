@@ -1559,6 +1559,72 @@ const swaggerDocument = {
           },
         },
       },
+      "/api/analytics/capabilities": {
+        get: {
+          tags: ["Analytics"],
+          summary: "Get Phase 5A analytics capabilities, supported questions, and privacy guarantee",
+          security: [{ BearerAuth: [] }],
+          responses: {
+            200: {
+              description: "Capabilities fetched successfully",
+            },
+          },
+        },
+      },
+      "/api/analytics/query": {
+        post: {
+          tags: ["Analytics"],
+          summary: "Execute deterministic financial analytics query or classified question",
+          security: [{ BearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    question: { type: "string", example: "How much did I spend this month?" },
+                    intent: { type: "string", example: "total_spending" },
+                    period: { type: "string", example: "current_month" },
+                    startDate: { type: "string", example: "2026-10-01" },
+                    endDate: { type: "string", example: "2026-10-31" },
+                    month: { type: "string", example: "2026-10" },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            200: {
+              description: "Analytics query result with provenance and privacy notice",
+            },
+          },
+        },
+      },
+      "/api/analytics/insights": {
+        get: {
+          tags: ["Analytics"],
+          summary: "Get deterministic financial insights for the requested period",
+          security: [{ BearerAuth: [] }],
+          parameters: [
+            {
+              name: "period",
+              in: "query",
+              schema: { type: "string", enum: ["current_month", "previous_month", "last_30_days", "custom"] },
+            },
+            {
+              name: "month",
+              in: "query",
+              schema: { type: "string", example: "2026-10" },
+            },
+          ],
+          responses: {
+            200: {
+              description: "Financial insights fetched successfully",
+            },
+          },
+        },
+      },
     },
   },
 };

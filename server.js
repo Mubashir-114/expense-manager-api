@@ -15,6 +15,9 @@ import reportRoutes from "./routes/reportRoutes.js";
 import accountRoutes from "./routes/accountRoutes.js";
 import transferRoutes from "./routes/transferRoutes.js";
 import smartTransactionRoutes from "./routes/smartTransactionRoutes.js";
+import analyticsRoutes from "./routes/analyticsRoutes.js";
+
+import { assertNoProhibitedProvidersConfigured } from "./services/analytics/outboundPolicy.js";
 
 import notFound from "./middleware/notFound.js";
 import errorHandler from "./middleware/errorHandler.js";
@@ -31,6 +34,7 @@ if (process.env.NODE_ENV !== "test") {
 
 // Validate config variables
 validateConfig();
+assertNoProhibitedProvidersConfigured();
 
 const app = express();
 
@@ -128,6 +132,7 @@ app.use("/api/reports", reportRoutes);
 app.use("/api/accounts", accountRoutes);
 app.use("/api/transfers", transferRoutes);
 app.use("/api/smart-transactions", smartTransactionRoutes);
+app.use("/api/analytics", analyticsRoutes);
 
 app.get("/", (req, res) => {
   res.json({

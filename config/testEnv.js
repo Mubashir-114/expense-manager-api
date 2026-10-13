@@ -12,5 +12,7 @@ process.env.DB_PORT ??= "13307";
 process.env.DB_NAME = `fintrack_test_${runId}`;
 process.env.DB_USER = `fintrack_test_${runId}`;
 process.env.DB_PASSWORD = `fintrack-test-${randomBytes(24).toString("hex")}`;
+process.env.ANALYTICS_DB_USER = `fintrack_test_analytics_${runId}`;
+process.env.ANALYTICS_DB_PASSWORD = `fintrack-test-analytics-${randomBytes(24).toString("hex")}`;
 process.env.JWT_SECRET = `fintrack-test-${randomBytes(32).toString("hex")}`;
 process.env.PORT ??= "0";
