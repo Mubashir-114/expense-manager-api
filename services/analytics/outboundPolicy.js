@@ -17,6 +17,7 @@ export const PROHIBITED_PROVIDER_ENV_VARS = Object.freeze([
   "OPENAI_API_KEY",
   "ANTHROPIC_API_KEY",
   "GEMINI_API_KEY",
+  "GROQ_API_KEY",
   "EXTERNAL_LLM_URL",
   "EXTERNAL_AI_ENDPOINT",
   "COHERE_API_KEY",
@@ -28,9 +29,24 @@ export const PROHIBITED_PROVIDER_ENV_VARS = Object.freeze([
  * Checks for unauthorized external AI/LLM configurations.
  * Fails closed immediately if an external AI provider is configured for sensitive analytics.
  */
-export const assertNoProhibitedProvidersConfigured = (env = process.env) => {
+export const assertNoProhibitedProvidersConfigured = (
+  env = process.env,
+  { allowFinLanguageStyleProvider = false } = {}
+) => {
   const violations = [];
+  const finLanguageEnabled = env.FIN_EXTERNAL_LANGUAGE_ENABLED === "true";
+  const selectedKey =
+    env.FIN_LANGUAGE_PROVIDER === "groq"
+      ? "GROQ_API_KEY"
+      : env.FIN_LANGUAGE_PROVIDER === "gemini"
+        ? "GEMINI_API_KEY"
+        : null;
   for (const envVar of PROHIBITED_PROVIDER_ENV_VARS) {
+    const isNarrowFinStyleException =
+      allowFinLanguageStyleProvider &&
+      finLanguageEnabled &&
+      selectedKey === envVar;
+    if (isNarrowFinStyleException) continue;
     if (env[envVar] && String(env[envVar]).trim().length > 0) {
       violations.push(envVar);
     }

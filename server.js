@@ -19,6 +19,7 @@ import analyticsRoutes from "./routes/analyticsRoutes.js";
 import goalRoutes from "./routes/goalRoutes.js";
 
 import { assertNoProhibitedProvidersConfigured } from "./services/analytics/outboundPolicy.js";
+import { assertFinLanguageConfiguration } from "./services/analytics/finLanguageAdapter.js";
 
 import notFound from "./middleware/notFound.js";
 import errorHandler from "./middleware/errorHandler.js";
@@ -35,7 +36,10 @@ if (process.env.NODE_ENV !== "test") {
 
 // Validate config variables
 validateConfig();
-assertNoProhibitedProvidersConfigured();
+assertFinLanguageConfiguration();
+assertNoProhibitedProvidersConfigured(process.env, {
+  allowFinLanguageStyleProvider: true,
+});
 
 const app = express();
 
