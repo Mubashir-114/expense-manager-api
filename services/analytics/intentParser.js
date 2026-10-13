@@ -1,9 +1,10 @@
 /**
- * FinTrack 2.0 - Phase 5A Intent and Question Safety Parser
+ * FinTrack 2.0 - Phase 5B Context-Aware Intent and Question Safety Parser
  *
  * Invariant: Every user input is treated as untrusted data.
  * Questions are constrained, sanitized, checked against injection / exfiltration patterns,
  * and classified into an allowlist of supported deterministic analytics intents.
+ * Multi-turn follow-up queries are resolved deterministically using structured context.
  */
 
 export const SUPPORTED_INTENTS = Object.freeze([
@@ -14,6 +15,11 @@ export const SUPPORTED_INTENTS = Object.freeze([
   "income_vs_expense",
   "largest_expenses",
   "overview_insights",
+  "category_comparison",
+  "remaining_allowance",
+  "unusual_spending",
+  "savings_opportunities",
+  "clarification_needed",
 ]);
 
 export const SUGGESTED_QUESTIONS = Object.freeze([
@@ -33,9 +39,29 @@ export const SUGGESTED_QUESTIONS = Object.freeze([
     label: "Spending Trend",
   },
   {
+    intent: "category_comparison",
+    question: "Which category increased the most?",
+    label: "Category Comparison",
+  },
+  {
     intent: "budget_status",
-    question: "How are my budgets doing?",
-    label: "Budget Status",
+    question: "Am I exceeding my food budget?",
+    label: "Food Budget Status",
+  },
+  {
+    intent: "remaining_allowance",
+    question: "How much can I still spend?",
+    label: "Remaining Allowance",
+  },
+  {
+    intent: "unusual_spending",
+    question: "Any unusual spending this month?",
+    label: "Unusual Spending",
+  },
+  {
+    intent: "savings_opportunities",
+    question: "Where can I save money?",
+    label: "Savings Opportunities",
   },
   {
     intent: "income_vs_expense",
@@ -120,7 +146,7 @@ export const checkPromptSafety = (text) => {
         isSafe: false,
         reason: "prohibited_source",
         message:
-          "Privacy policy: FinTrack Phase 5A has no access to bank accounts, SMS inboxes, or other users. It analyzes only your explicitly saved FinTrack records.",
+          "Privacy policy: FinTrack Phase 5B has no access to bank accounts, SMS inboxes, or other users. It analyzes only your explicitly saved FinTrack records.",
       };
     }
   }
@@ -131,7 +157,7 @@ export const checkPromptSafety = (text) => {
         isSafe: false,
         reason: "mutation_attempt",
         message:
-          "Read-only policy: FinTrack Phase 5A is strictly read-only and cannot perform transfers, payments, or record modifications.",
+          "Read-only policy: FinTrack Phase 5B is strictly read-only and cannot perform transfers, payments, or record modifications.",
       };
     }
   }
@@ -154,10 +180,47 @@ export const detectPeriodFromText = (text) => {
 };
 
 /**
- * Classifies a normalized question into an allowlisted intent.
- * Returns an intent classification object with security status and suggestions.
+ * Detects common budget/spending categories mentioned in text.
  */
-export const parseUserQuery = ({ question, intent, period, startDate, endDate, month }) => {
+export const detectCategoryFromText = (text) => {
+  if (typeof text !== "string") return null;
+  const lower = text.toLowerCase();
+
+  const categoryMatchers = [
+    { name: "Food", regex: /\b(food|dining|groceries|restaurant|eat|snacks?)\b/i },
+    { name: "Transport", regex: /\b(transport|commute|cab|taxi|uber|ola|bus|metro|fuel|petrol)\b/i },
+    { name: "Housing", regex: /\b(housing|rent|mortgage|apartment)\b/i },
+    { name: "Utilities", regex: /\b(utilities|electricity|water|gas|wifi|internet)\b/i },
+    { name: "Entertainment", regex: /\b(entertainment|movie|cinema|netflix|games?|recreation)\b/i },
+    { name: "Shopping", regex: /\b(shopping|clothes|apparel|amazon|flipkart|electronics)\b/i },
+    { name: "Healthcare", regex: /\b(health|healthcare|medical|medicine|doctor|pharmacy)\b/i },
+    { name: "Education", regex: /\b(education|course|tuition|books?|school)\b/i },
+    { name: "Travel", regex: /\b(travel|flight|vacation|trip|hotel)\b/i },
+    { name: "Bills", regex: /\b(bills?|recharge|subscription)\b/i },
+  ];
+
+  for (const m of categoryMatchers) {
+    if (m.regex.test(lower)) {
+      return m.name;
+    }
+  }
+  return null;
+};
+
+/**
+ * Classifies a normalized question into an allowlisted intent.
+ * Incorporates ephemeral conversation context for multi-turn interactions.
+ */
+export const parseUserQuery = ({
+  question,
+  intent,
+  period,
+  startDate,
+  endDate,
+  month,
+  category,
+  conversationContext,
+}) => {
   const normalizedText = normalizeQuestion(question || "");
 
   // 1. If explicit question text is present, run prompt-safety checks
@@ -171,7 +234,9 @@ export const parseUserQuery = ({ question, intent, period, startDate, endDate, m
         refusalMessage: safety.message,
         question: normalizedText,
         period: period || "current_month",
+        confidence: "high",
         suggestions: SUGGESTED_QUESTIONS,
+        conversationContext,
       };
     }
   }
@@ -186,14 +251,186 @@ export const parseUserQuery = ({ question, intent, period, startDate, endDate, m
       startDate,
       endDate,
       month,
+      category: category || detectCategoryFromText(normalizedText) || conversationContext?.activeCategory || null,
+      confidence: "high",
       suggestions: SUGGESTED_QUESTIONS,
+      conversationContext,
     };
   }
 
   // 3. Classify question text into supported intents
   const lower = normalizedText.toLowerCase();
 
-  // Total spending
+  // Detect explicit or contextual category
+  const detectedCategory =
+    category ||
+    detectCategoryFromText(lower) ||
+    (conversationContext?.activeCategory ? conversationContext.activeCategory : null);
+
+  // ── Multi-Turn Follow-Up Resolution ─────────────────────────────────────────
+
+  // Follow-up: "What about last month?" / "And last month?" / "How about last month?"
+  if (
+    /^(?:what|how)\s*about\s*(?:the\s*)?(?:last|previous)\s*month\??$/i.test(lower) ||
+    /^and\s*(?:the\s*)?(?:last|previous)\s*month\??$/i.test(lower) ||
+    /^(?:what|how)\s*about\s*last\s*month/i.test(lower)
+  ) {
+    const resolvedIntent = conversationContext?.previousIntent || "total_spending";
+    return {
+      intent: resolvedIntent,
+      isRefusal: false,
+      question: normalizedText,
+      period: "previous_month",
+      startDate,
+      endDate,
+      month,
+      category: detectedCategory,
+      confidence: "high",
+      suggestions: SUGGESTED_QUESTIONS,
+      conversationContext,
+    };
+  }
+
+  // Follow-up: "What about last 30 days?" / "And past 30 days?"
+  if (
+    /^(?:what|how)\s*about\s*(?:the\s*)?(?:last|past)\s*30\s*days\??$/i.test(lower) ||
+    /^and\s*(?:the\s*)?(?:last|past)\s*30\s*days\??$/i.test(lower)
+  ) {
+    const resolvedIntent = conversationContext?.previousIntent || "total_spending";
+    return {
+      intent: resolvedIntent,
+      isRefusal: false,
+      question: normalizedText,
+      period: "last_30_days",
+      startDate,
+      endDate,
+      month,
+      category: detectedCategory,
+      confidence: "high",
+      suggestions: SUGGESTED_QUESTIONS,
+      conversationContext,
+    };
+  }
+
+  // ── 5B.1 & 5B.2: Category Comparisons & Month-over-Month Explanations ──────
+  // "Which category increased the most?" / "Which category decreased the most?"
+  if (
+    /(which|what)\s*category\s*(increased|grew|went\s*up|rose|decreased|dropped|fell)\s*(the\s*)?most/i.test(lower) ||
+    /category\s*(spending\s*)?comparison/i.test(lower) ||
+    /compare\s*(my\s*)?categor(y|ies)/i.test(lower) ||
+    /biggest\s*(category\s*)?(increase|decrease|jump|drop)/i.test(lower) ||
+    /where\s*did\s*(my\s*)?spending\s*(increase|decrease|grow)\s*(the\s*)?most/i.test(lower)
+  ) {
+    const isDecrease = /decreas|drop|fell/i.test(lower);
+    return {
+      intent: "category_comparison",
+      comparisonType: isDecrease ? "largest_decrease" : "largest_increase",
+      isRefusal: false,
+      question: normalizedText,
+      period: period || (conversationContext?.activePeriod || "current_month"),
+      startDate,
+      endDate,
+      month,
+      category: detectedCategory,
+      confidence: "high",
+      suggestions: SUGGESTED_QUESTIONS,
+      conversationContext,
+    };
+  }
+
+  // ── 5B.1 & 5B.2: Remaining Allowance ───────────────────────────────────────
+  // "How much can I still spend?" / "How much allowance is left?" / "How much budget left?"
+  if (
+    /how\s*much\s*(?:can\s*i\s*still\s*spend|allowance\s*(?:is\s*)?left|do\s*i\s*have\s*left|budget\s*(?:is\s*)?left)/i.test(lower) ||
+    /(?:remaining\s*(?:allowance|budget|balance|spending|money)|what\s*(?:can\s*i\s*still|is\s*left\s*to)\s*spend)/i.test(lower) ||
+    /can\s*i\s*still\s*spend/i.test(lower)
+  ) {
+    return {
+      intent: "remaining_allowance",
+      isRefusal: false,
+      question: normalizedText,
+      period: period || (conversationContext?.activePeriod || "current_month"),
+      startDate,
+      endDate,
+      month,
+      category: detectedCategory,
+      confidence: "high",
+      suggestions: SUGGESTED_QUESTIONS,
+      conversationContext,
+    };
+  }
+
+  // ── 5B.2: Unusual Spending Indicators ──────────────────────────────────────
+  // "Any unusual spending this month?" / "Are there anomalies?"
+  if (
+    /(unusual|abnormal|anomal(?:y|ies)|unexpected|spikes?)\s*(spending|expenses?|transactions?)/i.test(lower) ||
+    /any\s*unusual\s*spending/i.test(lower) ||
+    /did\s*i\s*(overspend|spend\s*unusually)/i.test(lower)
+  ) {
+    return {
+      intent: "unusual_spending",
+      isRefusal: false,
+      question: normalizedText,
+      period: period || detectPeriodFromText(lower),
+      startDate,
+      endDate,
+      month,
+      category: detectedCategory,
+      confidence: "high",
+      suggestions: SUGGESTED_QUESTIONS,
+      conversationContext,
+    };
+  }
+
+  // ── 5B.2: Explainable Savings Opportunities ────────────────────────────────
+  // "Where can I save money?" / "Show savings opportunities"
+  if (
+    /(where|how)\s*can\s*i\s*save\s*(money|more)/i.test(lower) ||
+    /savings?\s*opportunit(?:y|ies)/i.test(lower) ||
+    /ways?\s*to\s*save/i.test(lower) ||
+    /cut\s*(?:back|down|expenses?|spending)/i.test(lower) ||
+    /reduce\s*(?:expenses?|spending)/i.test(lower)
+  ) {
+    return {
+      intent: "savings_opportunities",
+      isRefusal: false,
+      question: normalizedText,
+      period: period || detectPeriodFromText(lower),
+      startDate,
+      endDate,
+      month,
+      category: detectedCategory,
+      confidence: "high",
+      suggestions: SUGGESTED_QUESTIONS,
+      conversationContext,
+    };
+  }
+
+  // ── Budget Status (Category-specific or Overall) ───────────────────────────
+  // "Am I exceeding my food budget?" / "How are my budgets doing?"
+  if (
+    /(?:am\s*i\s*(?:exceeding|over|within|on\s*track)|how\s*(?:is|are)\s*my|check\s*my)\s*.*?\bbudget/i.test(lower) ||
+    /budget\s*(?:status|progress|limits?)/i.test(lower) ||
+    /how\s*are\s*my\s*budgets/i.test(lower) ||
+    /(?:over|under)\s*budget/i.test(lower) ||
+    /my\s*budgets?/i.test(lower)
+  ) {
+    return {
+      intent: "budget_status",
+      isRefusal: false,
+      question: normalizedText,
+      period: period || "current_month",
+      startDate,
+      endDate,
+      month,
+      category: detectedCategory,
+      confidence: "high",
+      suggestions: SUGGESTED_QUESTIONS,
+      conversationContext,
+    };
+  }
+
+  // ── Total spending ─────────────────────────────────────────────────────────
   if (
     /total\s*(spending|spend|expenses?)/i.test(lower) ||
     /how\s*much\s*(did\s*i\s*spend|spent)/i.test(lower) ||
@@ -207,11 +444,14 @@ export const parseUserQuery = ({ question, intent, period, startDate, endDate, m
       startDate,
       endDate,
       month,
+      category: detectedCategory,
+      confidence: "high",
       suggestions: SUGGESTED_QUESTIONS,
+      conversationContext,
     };
   }
 
-  // Spending by category
+  // ── Spending by category ───────────────────────────────────────────────────
   if (
     /(by|per)\s*category/i.test(lower) ||
     /category\s*breakdown/i.test(lower) ||
@@ -227,11 +467,14 @@ export const parseUserQuery = ({ question, intent, period, startDate, endDate, m
       startDate,
       endDate,
       month,
+      category: detectedCategory,
+      confidence: "high",
       suggestions: SUGGESTED_QUESTIONS,
+      conversationContext,
     };
   }
 
-  // Spending trend
+  // ── Spending trend ─────────────────────────────────────────────────────────
   if (
     /(compare|compared)\s*to\s*last\s*month/i.test(lower) ||
     /spending\s*trend/i.test(lower) ||
@@ -247,30 +490,14 @@ export const parseUserQuery = ({ question, intent, period, startDate, endDate, m
       startDate,
       endDate,
       month,
+      category: detectedCategory,
+      confidence: "high",
       suggestions: SUGGESTED_QUESTIONS,
+      conversationContext,
     };
   }
 
-  // Budget status
-  if (
-    /budget\s*(status|progress|limits?)/i.test(lower) ||
-    /how\s*are\s*my\s*budgets/i.test(lower) ||
-    /(over|under)\s*budget/i.test(lower) ||
-    /my\s*budgets?/i.test(lower)
-  ) {
-    return {
-      intent: "budget_status",
-      isRefusal: false,
-      question: normalizedText,
-      period: period || "current_month",
-      startDate,
-      endDate,
-      month,
-      suggestions: SUGGESTED_QUESTIONS,
-    };
-  }
-
-  // Income vs expense
+  // ── Income vs expense ──────────────────────────────────────────────────────
   if (
     /income\s*(vs|versus|and)\s*expenses?/i.test(lower) ||
     /cash\s*flow/i.test(lower) ||
@@ -286,11 +513,13 @@ export const parseUserQuery = ({ question, intent, period, startDate, endDate, m
       startDate,
       endDate,
       month,
+      confidence: "high",
       suggestions: SUGGESTED_QUESTIONS,
+      conversationContext,
     };
   }
 
-  // Largest expenses
+  // ── Largest expenses ───────────────────────────────────────────────────────
   if (
     /(largest|biggest|highest|top)\s*(expenses?|spending|purchases?|transactions?)/i.test(lower) ||
     /most\s*expensive/i.test(lower)
@@ -303,11 +532,13 @@ export const parseUserQuery = ({ question, intent, period, startDate, endDate, m
       startDate,
       endDate,
       month,
+      confidence: "high",
       suggestions: SUGGESTED_QUESTIONS,
+      conversationContext,
     };
   }
 
-  // Overview insights
+  // ── Overview insights ──────────────────────────────────────────────────────
   if (
     /insights?/i.test(lower) ||
     /summary/i.test(lower) ||
@@ -323,19 +554,65 @@ export const parseUserQuery = ({ question, intent, period, startDate, endDate, m
       startDate,
       endDate,
       month,
+      confidence: "high",
       suggestions: SUGGESTED_QUESTIONS,
+      conversationContext,
     };
   }
 
-  // 4. Default: Unsupported query with helpful response
+  // ── 5B.1: Ambiguous single-word category or domain questions ──────────────
+  const categoryMatch = detectCategoryFromText(lower);
+  if (categoryMatch && lower.split(/\s+/).length <= 2) {
+    // If user previously asked about budgets, assume budget
+    if (conversationContext?.previousIntent === "budget_status") {
+      return {
+        intent: "budget_status",
+        isRefusal: false,
+        question: normalizedText,
+        period: period || "current_month",
+        category: categoryMatch,
+        confidence: "medium",
+        suggestions: SUGGESTED_QUESTIONS,
+        conversationContext,
+      };
+    }
+    // Safe clarification instead of guessing
+    return {
+      intent: "clarification_needed",
+      isRefusal: false,
+      confidence: "low",
+      question: normalizedText,
+      category: categoryMatch,
+      clarificationOptions: [
+        {
+          label: `${categoryMatch} Spending`,
+          question: `How much did I spend on ${categoryMatch} this month?`,
+        },
+        {
+          label: `${categoryMatch} Budget`,
+          question: `Am I exceeding my ${categoryMatch} budget?`,
+        },
+        {
+          label: `Compare ${categoryMatch}`,
+          question: `Which category increased the most?`,
+        },
+      ],
+      suggestions: SUGGESTED_QUESTIONS,
+      conversationContext,
+    };
+  }
+
+  // ── 4. Default: Unsupported query with helpful response ───────────────────
   return {
     intent: "unsupported",
     isRefusal: false,
+    confidence: "none",
     refusalReason: "unsupported_query",
     refusalMessage:
-      "FinTrack Phase 5A supports specific financial queries about spending, categories, trends, budgets, and savings. Please choose one of the suggested questions below.",
+      "FinTrack Phase 5B supports questions about spending, category comparisons, budgets, remaining allowances, unusual expenses, and savings opportunities. Please choose one of the suggested questions below.",
     question: normalizedText,
     period: period || "current_month",
     suggestions: SUGGESTED_QUESTIONS,
+    conversationContext,
   };
 };

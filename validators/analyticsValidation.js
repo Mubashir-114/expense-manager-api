@@ -8,6 +8,16 @@ const ALLOWED_QUERY_BODY_FIELDS = Object.freeze([
   "startDate",
   "endDate",
   "month",
+  "category",
+  "conversationContext",
+]);
+
+const ALLOWED_CONTEXT_FIELDS = Object.freeze([
+  "previousIntent",
+  "activePeriod",
+  "activeCategory",
+  "activeMonth",
+  "turnCount",
 ]);
 
 const ALLOWED_INSIGHTS_QUERY_FIELDS = Object.freeze([
@@ -79,6 +89,51 @@ export const analyticsQueryValidation = [
     .optional({ values: "falsy" })
     .matches(/^\d{4}-\d{2}$/)
     .withMessage("Month must be in YYYY-MM format"),
+
+  body("category")
+    .optional({ values: "falsy" })
+    .isString()
+    .withMessage("Category must be a string")
+    .isLength({ max: 50 })
+    .withMessage("Category must not exceed 50 characters"),
+
+  body("conversationContext")
+    .optional({ values: "falsy" })
+    .custom((ctx) => {
+      if (typeof ctx !== "object" || ctx === null || Array.isArray(ctx)) {
+        throw new Error("conversationContext must be an object");
+      }
+      const extraContextFields = Object.keys(ctx).filter(
+        (k) => !ALLOWED_CONTEXT_FIELDS.includes(k)
+      );
+      if (extraContextFields.length > 0) {
+        throw new Error(
+          `Unknown field(s) in conversationContext: ${extraContextFields.join(", ")}`
+        );
+      }
+      if (ctx.previousIntent && !SUPPORTED_INTENTS.includes(ctx.previousIntent)) {
+        throw new Error(`Invalid previousIntent in conversationContext: ${ctx.previousIntent}`);
+      }
+      if (
+        ctx.activePeriod &&
+        !["current_month", "previous_month", "last_30_days", "custom"].includes(ctx.activePeriod)
+      ) {
+        throw new Error(`Invalid activePeriod in conversationContext: ${ctx.activePeriod}`);
+      }
+      if (ctx.activeCategory && (typeof ctx.activeCategory !== "string" || ctx.activeCategory.length > 50)) {
+        throw new Error("activeCategory in conversationContext must be a string up to 50 characters");
+      }
+      if (ctx.activeMonth && !/^\d{4}-\d{2}$/.test(ctx.activeMonth)) {
+        throw new Error("activeMonth in conversationContext must be in YYYY-MM format");
+      }
+      if (
+        ctx.turnCount !== undefined &&
+        (!Number.isInteger(ctx.turnCount) || ctx.turnCount < 0 || ctx.turnCount > 1000)
+      ) {
+        throw new Error("turnCount in conversationContext must be a non-negative integer up to 1000");
+      }
+      return true;
+    }),
 ];
 
 export const analyticsInsightsValidation = [

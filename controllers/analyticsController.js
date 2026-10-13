@@ -25,6 +25,8 @@ export const queryAnalytics = asyncHandler(async (req, res) => {
     startDate: req.body.startDate,
     endDate: req.body.endDate,
     month: req.body.month,
+    category: req.body.category,
+    conversationContext: req.body.conversationContext,
   });
 
   const result = await executeAnalyticsQuery(userId, parsed);

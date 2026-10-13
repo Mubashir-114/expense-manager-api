@@ -1,5 +1,5 @@
 /**
- * FinTrack 2.0 - Phase 5A Deterministic Financial Analytics Engine
+ * FinTrack 2.0 - Phase 5B Deterministic Financial Analytics Engine
  *
  * Invariants:
  * 1. Read-only: Zero mutating database queries (no INSERT, UPDATE, DELETE).
@@ -177,22 +177,6 @@ export const resolveAnalyticsPeriod = (options = {}) => {
 };
 
 /**
- * Calculates percentage difference safely with zero-division protection.
- */
-const calculatePercentChange = (current, previous) => {
-  const c = Number(current);
-  const p = Number(previous);
-  if (p === 0) {
-    if (c === 0) return { changePercent: "0.0", direction: "unchanged" };
-    return { changePercent: "100.0", direction: "increased" };
-  }
-  const diff = c - p;
-  const pct = Math.abs((diff / p) * 100).toFixed(1);
-  const direction = diff > 0 ? "increased" : diff < 0 ? "decreased" : "unchanged";
-  return { changePercent: pct, direction };
-};
-
-/**
  * Total Spending Engine
  */
 const computeTotalSpending = async (userId, period) => {
@@ -215,7 +199,7 @@ const computeTotalSpending = async (userId, period) => {
 };
 
 /**
- * Spending by Category Engine
+ * Spending By Category Engine
  */
 const computeSpendingByCategory = async (userId, period) => {
   const [rows] = await analyticsDb.execute(
@@ -254,9 +238,23 @@ const computeSpendingByCategory = async (userId, period) => {
 
   return {
     totalSpending: grandTotal,
-    totalTransactions,
     transactionCount: totalTransactions,
     categories,
+  };
+};
+
+const calculatePercentChange = (current, previous) => {
+  if (previous === 0) {
+    if (current === 0) return { changePercent: "0.0", direction: "unchanged" };
+    return { changePercent: "+100.0", direction: "increased" };
+  }
+  const diff = current - previous;
+  if (diff === 0) return { changePercent: "0.0", direction: "unchanged" };
+
+  const pct = Math.abs((diff / previous) * 100).toFixed(1);
+  return {
+    changePercent: pct,
+    direction: diff > 0 ? "increased" : "decreased",
   };
 };
 
@@ -264,8 +262,10 @@ const computeSpendingByCategory = async (userId, period) => {
  * Spending Trend Engine
  */
 const computeSpendingTrend = async (userId, period) => {
-  const currentMetrics = await computeTotalSpending(userId, period);
-  const prevMetrics = await computeTotalSpending(userId, period.previousPeriod);
+  const [currentMetrics, prevMetrics] = await Promise.all([
+    computeTotalSpending(userId, period),
+    computeTotalSpending(userId, period.previousPeriod),
+  ]);
 
   const { changePercent, direction } = calculatePercentChange(
     currentMetrics.totalSpending,
@@ -283,9 +283,9 @@ const computeSpendingTrend = async (userId, period) => {
 };
 
 /**
- * Budget Status Engine
+ * Budget Status Engine (Overall & Category-Specific)
  */
-const computeBudgetStatus = async (userId, period) => {
+const computeBudgetStatus = async (userId, period, options = {}) => {
   const [budgetRows] = await analyticsDb.execute(
     `SELECT b.id, b.category_id, b.amount AS budget_limit, c.name AS category_name
        FROM budgets b
@@ -352,6 +352,16 @@ const computeBudgetStatus = async (userId, period) => {
 
   const overallPercentage = totalBudget > 0 ? ((totalSpent / totalBudget) * 100).toFixed(1) : "0.0";
 
+  let categoryBudget = null;
+  if (options.category) {
+    const target = options.category.toLowerCase().trim();
+    categoryBudget =
+      budgetItems.find((item) => {
+        const catLower = item.categoryName.toLowerCase();
+        return catLower === target || catLower.includes(target) || target.includes(catLower);
+      }) || null;
+  }
+
   return {
     totalBudgets: budgetRows.length,
     totalBudget,
@@ -361,6 +371,250 @@ const computeBudgetStatus = async (userId, period) => {
     exceededCount,
     warningCount,
     items: budgetItems,
+    categoryBudget,
+    requestedCategory: options.category || null,
+  };
+};
+
+/**
+ * Category Spending Comparison Engine (Month-over-Month & Breakdown by Category)
+ */
+const computeCategoryComparison = async (userId, period, options = {}) => {
+  const [curByCat, prevByCat] = await Promise.all([
+    computeSpendingByCategory(userId, period),
+    computeSpendingByCategory(userId, period.previousPeriod),
+  ]);
+
+  const currentRows = curByCat.categories;
+  const prevRows = prevByCat.categories;
+
+  const prevMap = new Map();
+  for (const r of prevRows) {
+    prevMap.set(r.name, {
+      id: r.id,
+      total: Number(r.total),
+      count: Number(r.count),
+    });
+  }
+
+  const allCategoryNames = new Set([
+    ...currentRows.map((r) => r.name),
+    ...prevRows.map((r) => r.name),
+  ]);
+
+  let totalCurrentSpending = 0;
+  let totalPrevSpending = 0;
+  let totalTransactions = 0;
+
+  const comparisonCategories = [];
+
+  for (const name of allCategoryNames) {
+    const cur = currentRows.find((r) => r.name === name);
+    const prev = prevMap.get(name);
+
+    const curTotal = cur ? Number(cur.total) : 0;
+    const prevTotal = prev ? prev.total : 0;
+    const curCount = cur ? Number(cur.count) : 0;
+
+    totalCurrentSpending += curTotal;
+    totalPrevSpending += prevTotal;
+    totalTransactions += curCount;
+
+    const diff = curTotal - prevTotal;
+    const { changePercent, direction } = calculatePercentChange(curTotal, prevTotal);
+
+    comparisonCategories.push({
+      id: cur ? cur.id : prev ? prev.id : 0,
+      name,
+      currentTotal: curTotal,
+      previousTotal: prevTotal,
+      difference: diff,
+      percentChange: changePercent,
+      direction,
+      currentCount: curCount,
+      previousCount: prev ? prev.count : 0,
+    });
+  }
+
+  // Sort by difference descending (largest increase first)
+  comparisonCategories.sort((a, b) => b.difference - a.difference);
+
+  const largestIncrease = comparisonCategories.length > 0 ? comparisonCategories[0] : null;
+  const largestDecrease =
+    comparisonCategories.length > 0
+      ? [...comparisonCategories].sort((a, b) => a.difference - b.difference)[0]
+      : null;
+
+  let targetCategoryComparison = null;
+  if (options.category) {
+    const target = options.category.toLowerCase().trim();
+    targetCategoryComparison =
+      comparisonCategories.find((c) => {
+        const catLower = c.name.toLowerCase();
+        return catLower === target || catLower.includes(target) || target.includes(catLower);
+      }) || null;
+  }
+
+  return {
+    categories: comparisonCategories,
+    totalCurrentSpending,
+    totalPrevSpending,
+    totalDifference: totalCurrentSpending - totalPrevSpending,
+    transactionCount: totalTransactions,
+    largestIncrease,
+    largestDecrease,
+    targetCategoryComparison,
+    previousPeriodLabel: period.previousPeriod.label,
+    currentPeriodLabel: period.label,
+  };
+};
+
+/**
+ * Remaining Allowance Engine
+ */
+const computeRemainingAllowance = async (userId, period, options = {}) => {
+  const [budgetStatus, incExp] = await Promise.all([
+    computeBudgetStatus(userId, period, options),
+    computeIncomeVsExpense(userId, period),
+  ]);
+
+  const remainingBudgetAllowance = Math.max(0, budgetStatus.totalBudget - budgetStatus.totalSpent);
+  const discretionaryCashFlow = Math.max(0, incExp.totalIncome - incExp.totalExpense);
+
+  return {
+    totalBudgets: budgetStatus.totalBudgets,
+    totalBudget: budgetStatus.totalBudget,
+    totalSpent: budgetStatus.totalSpent,
+    remainingBudgetAllowance,
+    totalIncome: incExp.totalIncome,
+    totalExpense: incExp.totalExpense,
+    discretionaryCashFlow,
+    categoryBudget: budgetStatus.categoryBudget,
+    requestedCategory: options.category || null,
+    transactionCount: budgetStatus.transactionCount,
+  };
+};
+
+/**
+ * Unusual Spending Indicators Engine
+ */
+const computeUnusualSpending = async (userId, period) => {
+  const [comp, largest, totalSpending, budgetStatus] = await Promise.all([
+    computeCategoryComparison(userId, period),
+    computeLargestExpenses(userId, period),
+    computeTotalSpending(userId, period),
+    computeBudgetStatus(userId, period),
+  ]);
+
+  const indicators = [];
+
+  // Rule 1: Category spending surge (> 50% increase AND increase >= ₹1,000)
+  for (const cat of comp.categories) {
+    if (cat.difference >= 1000 && cat.previousTotal > 0 && (cat.difference / cat.previousTotal) >= 0.5) {
+      indicators.push({
+        type: "category_spike",
+        severity: "warning",
+        title: `${cat.name} Spending Surge`,
+        description: `${cat.name} spending increased by ${cat.percentChange}% (+₹${cat.difference.toLocaleString("en-IN")}) compared to ${period.previousPeriod.label}`,
+        amount: cat.difference,
+        category: cat.name,
+      });
+    }
+  }
+
+  // Rule 2: Exceptionally large single transactions (>= 2.5x avg transaction amount and >= ₹1,000)
+  const avgTx =
+    totalSpending.transactionCount > 0
+      ? totalSpending.totalSpending / totalSpending.transactionCount
+      : 0;
+
+  if (avgTx > 0) {
+    for (const tx of largest.largestExpenses) {
+      if (tx.amount >= 2.5 * avgTx && tx.amount >= 1000) {
+        indicators.push({
+          type: "large_transaction",
+          severity: "notice",
+          title: `Large Expense: ${tx.title}`,
+          description: `Single expense of ₹${tx.amount.toLocaleString("en-IN")} on ${tx.date} (${tx.category}) is ${(tx.amount / avgTx).toFixed(1)}x your average transaction (₹${Math.round(avgTx).toLocaleString("en-IN")})`,
+          amount: tx.amount,
+          category: tx.category,
+        });
+      }
+    }
+  }
+
+  // Rule 3: Budget overrun indicator
+  for (const b of budgetStatus.items) {
+    if (b.status === "exceeded") {
+      const overrun = b.spent - b.budgetLimit;
+      indicators.push({
+        type: "budget_exceeded",
+        severity: "warning",
+        title: `${b.categoryName} Budget Exceeded`,
+        description: `${b.categoryName} has exceeded its budget limit by ₹${overrun.toLocaleString("en-IN")} (${b.percentage}% utilized)`,
+        amount: overrun,
+        category: b.categoryName,
+      });
+    }
+  }
+
+  return {
+    indicators,
+    totalIndicators: indicators.length,
+    transactionCount: totalSpending.transactionCount,
+    averageTransactionAmount: avgTx,
+  };
+};
+
+/**
+ * Explainable Savings Opportunities Engine
+ */
+const computeSavingsOpportunities = async (userId, period) => {
+  const [budgetStatus, comp, incExp] = await Promise.all([
+    computeBudgetStatus(userId, period),
+    computeCategoryComparison(userId, period),
+    computeIncomeVsExpense(userId, period),
+  ]);
+
+  const opportunities = [];
+  let totalPotentialSavings = 0;
+
+  // Opportunity 1: Over-budget categories
+  for (const b of budgetStatus.items) {
+    if (b.status === "exceeded") {
+      const overrun = b.spent - b.budgetLimit;
+      totalPotentialSavings += overrun;
+      opportunities.push({
+        type: "budget_overrun",
+        category: b.categoryName,
+        potentialSavings: overrun,
+        reason: `Exceeded ${b.categoryName} budget by ₹${overrun.toLocaleString("en-IN")}. Aligning spending to the ₹${b.budgetLimit.toLocaleString("en-IN")} limit would save ₹${overrun.toLocaleString("en-IN")}.`,
+      });
+    }
+  }
+
+  // Opportunity 2: Discretionary categories with surges
+  const discretionaryKeywords = ["entertainment", "dining", "shopping", "food", "travel", "recreation"];
+  for (const cat of comp.categories) {
+    const isDiscretionary = discretionaryKeywords.some((k) => cat.name.toLowerCase().includes(k));
+    if (isDiscretionary && cat.difference >= 1000 && !opportunities.some((o) => o.category === cat.name)) {
+      const trimAmount = Math.round(cat.difference * 0.5);
+      totalPotentialSavings += trimAmount;
+      opportunities.push({
+        type: "discretionary_reduction",
+        category: cat.name,
+        potentialSavings: trimAmount,
+        reason: `${cat.name} spending grew by ₹${cat.difference.toLocaleString("en-IN")} (+${cat.percentChange}%) this period. Trimming half this increase could save ₹${trimAmount.toLocaleString("en-IN")}.`,
+      });
+    }
+  }
+
+  return {
+    opportunities,
+    totalPotentialSavings,
+    savingsRate: incExp.savingsRate,
+    netSavings: incExp.netSavings,
+    transactionCount: incExp.transactionCount,
   };
 };
 
@@ -526,7 +780,7 @@ const computeDeterministicInsights = async (userId, period) => {
 };
 
 /**
- * Main query dispatcher for Phase 5A Analytics.
+ * Main query dispatcher for Phase 5B Assistant & Analytics.
  */
 export const executeAnalyticsQuery = async (userId, parsedQuery) => {
   // If query was refused or classified as unsupported by parser, return safe formatted refusal
@@ -537,7 +791,23 @@ export const executeAnalyticsQuery = async (userId, parsedQuery) => {
       refusalReason: parsedQuery.refusalReason,
       refusalMessage: parsedQuery.refusalMessage,
       question: parsedQuery.question,
+      confidence: parsedQuery.confidence,
       suggestions: parsedQuery.suggestions,
+      conversationContext: parsedQuery.conversationContext,
+    });
+  }
+
+  // If clarification is requested for ambiguous input
+  if (parsedQuery.intent === "clarification_needed") {
+    return formatTemplateResponse({
+      intent: "clarification_needed",
+      isRefusal: false,
+      confidence: "low",
+      question: parsedQuery.question,
+      category: parsedQuery.category,
+      clarificationOptions: parsedQuery.clarificationOptions,
+      suggestions: parsedQuery.suggestions,
+      conversationContext: parsedQuery.conversationContext,
     });
   }
 
@@ -564,7 +834,7 @@ export const executeAnalyticsQuery = async (userId, parsedQuery) => {
       break;
 
     case "budget_status":
-      metrics = await computeBudgetStatus(userId, period);
+      metrics = await computeBudgetStatus(userId, period, { category: parsedQuery.category });
       break;
 
     case "income_vs_expense":
@@ -579,6 +849,25 @@ export const executeAnalyticsQuery = async (userId, parsedQuery) => {
       metrics = await computeDeterministicInsights(userId, period);
       break;
 
+    case "category_comparison":
+      metrics = await computeCategoryComparison(userId, period, {
+        category: parsedQuery.category,
+        comparisonType: parsedQuery.comparisonType,
+      });
+      break;
+
+    case "remaining_allowance":
+      metrics = await computeRemainingAllowance(userId, period, { category: parsedQuery.category });
+      break;
+
+    case "unusual_spending":
+      metrics = await computeUnusualSpending(userId, period);
+      break;
+
+    case "savings_opportunities":
+      metrics = await computeSavingsOpportunities(userId, period);
+      break;
+
     default:
       throw new AppError("Unsupported intent", 400);
   }
@@ -588,6 +877,10 @@ export const executeAnalyticsQuery = async (userId, parsedQuery) => {
     period,
     metrics,
     question: parsedQuery.question,
+    confidence: parsedQuery.confidence || "high",
+    category: parsedQuery.category,
+    comparisonType: parsedQuery.comparisonType,
+    conversationContext: parsedQuery.conversationContext,
     suggestions: parsedQuery.suggestions,
   });
 };
