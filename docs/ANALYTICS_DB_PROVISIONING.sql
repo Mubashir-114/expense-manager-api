@@ -20,6 +20,8 @@ GRANT SELECT ON personal_finance.transactions TO 'fintrack_analytics'@'%';
 GRANT SELECT ON personal_finance.categories TO 'fintrack_analytics'@'%';
 GRANT SELECT ON personal_finance.budgets TO 'fintrack_analytics'@'%';
 GRANT SELECT ON personal_finance.accounts TO 'fintrack_analytics'@'%';
+GRANT SELECT ON personal_finance.savings_goals TO 'fintrack_analytics'@'%';
+GRANT SELECT ON personal_finance.goal_contributions TO 'fintrack_analytics'@'%';
 
 -- Step 4: Flush privileges to activate configuration
 FLUSH PRIVILEGES;

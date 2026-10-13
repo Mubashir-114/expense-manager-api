@@ -108,6 +108,48 @@ export const buildFollowUpSuggestions = (intent, metrics = {}, activeCategory = 
         { intent: "savings_opportunities", question: "Where can I save money?", label: "Savings Opportunities" },
       ];
 
+    case "goal_affordability":
+      return [
+        { intent: "goal_status_summary", question: "Which goal is closest to completion?", label: "Goal Status" },
+        { intent: "goal_forecast_explanation", question: "Explain my savings forecast", label: "Forecast Explanation" },
+        { intent: "savings_opportunities", question: "Where can I save money?", label: "Savings Opportunities" },
+      ];
+
+    case "goal_completion_estimate":
+      return [
+        { intent: "goal_affordability", question: "Can I afford to save ₹5,000 monthly?", label: "Affordability" },
+        { intent: "goal_status_summary", question: "Which goal is closest to completion?", label: "Other Goals" },
+        { intent: "goal_what_if_expense", question: "What if I reduce my shopping expenses?", label: "What-If" },
+      ];
+
+    case "goal_status_summary":
+      return [
+        { intent: "goal_recommended_saving", question: "How much should I save each month?", label: "Recommended Saving" },
+        { intent: "goal_affordability", question: "Can I afford to save ₹5,000 monthly?", label: "Savings Affordability" },
+        { intent: "goal_forecast_explanation", question: "Explain my savings forecast", label: "Forecast" },
+      ];
+
+    case "goal_recommended_saving":
+      return [
+        { intent: "goal_status_summary", question: "Which goal is closest to completion?", label: "Goal Status" },
+        { intent: "goal_what_if_expense", question: "What if I reduce my shopping expenses?", label: "Reduce Expenses" },
+        { intent: "goal_forecast_explanation", question: "Explain my savings forecast", label: "Forecast Explanation" },
+      ];
+
+    case "goal_what_if_expense":
+      return [
+        { intent: "goal_affordability", question: "Can I afford to save ₹5,000 monthly?", label: "Affordability" },
+        { intent: "goal_status_summary", question: "Which goal is closest to completion?", label: "Goal Status" },
+        { intent: "goal_forecast_explanation", question: "Explain my savings forecast", label: "Forecast" },
+      ];
+
+    case "goal_forecast_explanation":
+      return [
+        { intent: "goal_affordability", question: "Can I afford to save ₹5,000 monthly?", label: "Affordability" },
+        { intent: "goal_recommended_saving", question: "How much should I save each month?", label: "Recommended Saving" },
+        { intent: "goal_status_summary", question: "Which goal is closest to completion?", label: "Goal Status" },
+      ];
+
     default:
       return [
         { intent: "total_spending", question: "How much did I spend this month?", label: "Total Spending" },
@@ -403,6 +445,95 @@ export const formatTemplateResponse = ({
         answer = `Calculation Methodology for Savings Opportunities: Sourced by evaluating over-budget categories (recovering exact overrun) and discretionary category surges (targeting 50% trimming of recorded increases). All amounts are strictly evidence-based facts.`;
       } else {
         answer = `Calculation Methodology: All metrics are computed deterministically from your authenticated FinTrack transaction and budget records using exact decimal arithmetic. Zero external AI models, third-party trackers, or bank APIs are used.`;
+      }
+      break;
+    }
+
+    case "goal_affordability": {
+      const requested = formatCurrency(metrics.requestedMonthlySaving);
+      const capacity = formatCurrency(metrics.potentialSavingsCapacity);
+      const net = formatCurrency(metrics.netMonthlyCashFlow);
+      if (metrics.isAffordable) {
+        answer = `Calculated Fact: Yes, you can afford to save ${requested} monthly. Based on your historical records, your average net monthly cash flow is ${net}, giving you a savings capacity of ${capacity}/month.`;
+      } else if (metrics.potentialSavingsCapacity > 0) {
+        const gap = formatCurrency(metrics.gap);
+        answer = `Calculated Fact: Your current monthly savings capacity is ${capacity} (net cash flow ${net}). To reach ${requested}/month, you have a gap of ${gap}/month, which could be covered by reducing discretionary expenses.`;
+      } else {
+        answer = `Calculated Fact: Based on your recorded history, your average monthly expenses match or exceed your income (net cash flow ${net}). Saving ${requested} monthly will require adjusting baseline spending or adding new income records.`;
+      }
+      break;
+    }
+
+    case "goal_completion_estimate": {
+      const g = metrics.goal;
+      if (!g) {
+        answer = `You do not have any active savings goals matching "${escapeText(metrics.targetGoalName || "")}". Create a goal in Financial Planning to track deterministic completion estimates.`;
+      } else if (g.isAchieved) {
+        answer = `Calculated Fact: "${escapeText(g.name)}" has already reached its target! You have saved ${formatCurrency(g.savedAmount)} of ${formatCurrency(g.targetAmount)} (${g.progressPercentage}%).`;
+      } else {
+        const rem = formatCurrency(g.remainingAmount);
+        const est = g.estimatedCompletion;
+        let timelineText = "";
+        if (est && est.date) {
+          timelineText = `Estimated completion date is approximately ${est.date} (${est.reason}).`;
+        } else if (g.requiredMonthlySaving) {
+          timelineText = `To finish by your target date (${g.targetDate}), you need to save ${formatCurrency(g.requiredMonthlySaving)} monthly.`;
+        } else {
+          timelineText = est?.reason || "Add more contribution records to project an exact timeline.";
+        }
+        answer = `Goal Status for "${escapeText(g.name)}": ${formatCurrency(g.savedAmount)} saved of ${formatCurrency(g.targetAmount)} (${g.progressPercentage}%). Remaining: ${rem}. ${timelineText}`;
+      }
+      break;
+    }
+
+    case "goal_status_summary": {
+      if (metrics.totalGoalsCount === 0) {
+        answer = "You do not have any savings goals created yet. Visit Financial Planning to set up goals and track progress.";
+      } else if (metrics.subType === "needs_attention" && metrics.attentionGoal) {
+        const g = metrics.attentionGoal;
+        const rem = formatCurrency(g.remainingAmount);
+        answer = `Goal Needing Attention: "${escapeText(g.name)}" has saved ${formatCurrency(g.savedAmount)} of ${formatCurrency(g.targetAmount)} (${g.progressPercentage}%). Status: ${g.intelligenceStatus === "behind_schedule" || g.isOverdue ? "Behind schedule" : "In progress"} with ${rem} remaining.`;
+      } else if (metrics.closestGoal) {
+        const g = metrics.closestGoal;
+        const rem = formatCurrency(g.remainingAmount);
+        answer = `Calculated Fact: "${escapeText(g.name)}" is closest to completion at ${g.progressPercentage}% (${formatCurrency(g.savedAmount)} of ${formatCurrency(g.targetAmount)} saved, ${rem} remaining across ${metrics.activeGoalsCount} active goal${metrics.activeGoalsCount === 1 ? "" : "s"}).`;
+      } else {
+        answer = `You have ${metrics.totalGoalsCount} savings goal${metrics.totalGoalsCount === 1 ? "" : "s"} tracked in FinTrack.`;
+      }
+      break;
+    }
+
+    case "goal_recommended_saving": {
+      const rec = formatCurrency(metrics.recommended20Percent);
+      const cap = formatCurrency(metrics.savingsCapacity);
+      const req = formatCurrency(metrics.totalRequiredAcrossGoals);
+      const count = metrics.activeGoalsCount;
+      answer = `Savings Recommendation: Following the standard 20% guideline based on your average monthly income of ${formatCurrency(metrics.avgMonthlyIncome)}, a healthy savings rate is ${rec}/month. Your actual current net capacity is ${cap}/month. You have ${count} active goal${count === 1 ? "" : "s"} requiring ${req}/month total to meet planned deadlines.`;
+      break;
+    }
+
+    case "goal_what_if_expense": {
+      const red = formatCurrency(metrics.reductionAmount);
+      const sim = metrics.simulation;
+      if (sim) {
+        answer = `What-If Simulation: Trimming ${red} monthly would lower expenses to ${formatCurrency(sim.simulated.monthlyExpense)} and raise your potential savings capacity to ${formatCurrency(sim.simulated.savingsCapacity)}/month (+${formatCurrency(sim.monthlyDifference)}/month). Note: Simulation is hypothetical and does not alter real records.`;
+      } else {
+        answer = `Trimming ${red} in monthly expenses increases your available savings capacity by ${red} each month.`;
+      }
+      break;
+    }
+
+    case "goal_forecast_explanation": {
+      const f = metrics.forecast;
+      if (f) {
+        const inc = formatCurrency(f.historicalAvgMonthlyIncome);
+        const exp = formatCurrency(f.historicalAvgMonthlyExpense);
+        const net = formatCurrency(f.netMonthlyCashFlow);
+        const cap = formatCurrency(f.potentialMonthlySavingsCapacity);
+        const projCap = formatCurrency(f.projectedSavingsCapacity);
+        answer = `Savings Forecast Explanation: Based on ${f.historicalMonthsSampled} historical month${f.historicalMonthsSampled === 1 ? "" : "s"}, your average monthly income is ${inc} and expenses are ${exp}, producing net monthly cash flow of ${net} (savings capacity of ${cap}/month). Over the next ${f.horizonMonths} months, your projected savings capacity is ${projCap}. Sourced strictly from verified records; estimates are conservative scenarios, not guarantees.`;
+      } else {
+        answer = "Cash-flow forecast computes your projected net cash flow using historical income and expenses from saved records.";
       }
       break;
     }

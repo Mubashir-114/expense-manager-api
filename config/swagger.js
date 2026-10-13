@@ -1625,6 +1625,173 @@ const swaggerDocument = {
           },
         },
       },
+      "/api/goals": {
+        get: {
+          tags: ["Goals"],
+          summary: "List all savings goals for authenticated user",
+          security: [{ BearerAuth: [] }],
+          parameters: [
+            {
+              name: "status",
+              in: "query",
+              schema: { type: "string", enum: ["active", "completed", "archived", "all"] },
+            },
+          ],
+          responses: {
+            200: { description: "Savings goals retrieved successfully" },
+          },
+        },
+        post: {
+          tags: ["Goals"],
+          summary: "Create a new savings goal",
+          security: [{ BearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["name", "targetAmount"],
+                  properties: {
+                    name: { type: "string", example: "Emergency Fund" },
+                    description: { type: "string", example: "6 months living expenses" },
+                    targetAmount: { type: "number", example: 100000 },
+                    currency: { type: "string", example: "INR" },
+                    targetDate: { type: "string", format: "date", example: "2027-12-31" },
+                    startingAmount: { type: "number", example: 10000 },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            201: { description: "Savings goal created successfully" },
+          },
+        },
+      },
+      "/api/goals/summary": {
+        get: {
+          tags: ["Goals"],
+          summary: "Get aggregated savings goals summary metrics",
+          security: [{ BearerAuth: [] }],
+          responses: {
+            200: { description: "Savings goals summary retrieved successfully" },
+          },
+        },
+      },
+      "/api/goals/forecast": {
+        get: {
+          tags: ["Goals"],
+          summary: "Get deterministic cash-flow forecast",
+          security: [{ BearerAuth: [] }],
+          parameters: [
+            {
+              name: "horizon",
+              in: "query",
+              schema: { type: "string", enum: ["next_30_days", "next_3_months", "next_6_months", "next_12_months"] },
+            },
+          ],
+          responses: {
+            200: { description: "Cash-flow forecast generated successfully" },
+          },
+        },
+      },
+      "/api/goals/simulate": {
+        post: {
+          tags: ["Goals"],
+          summary: "Run interactive what-if financial scenario simulation",
+          security: [{ BearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["scenarioType"],
+                  properties: {
+                    scenarioType: { type: "string", enum: ["savings_adjustment", "expense_reduction", "goal_timeline", "income_change"] },
+                    monthlySavingsAdjustment: { type: "number" },
+                    expenseReductionPercentage: { type: "number" },
+                    expenseReductionAmount: { type: "number" },
+                    goalId: { type: "integer" },
+                    targetMonths: { type: "integer" },
+                    incomeChangeAmount: { type: "number" },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            200: { description: "What-if simulation executed successfully" },
+          },
+        },
+      },
+      "/api/goals/{id}": {
+        get: {
+          tags: ["Goals"],
+          summary: "Get goal details and progress intelligence by ID",
+          security: [{ BearerAuth: [] }],
+          parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+          responses: {
+            200: { description: "Savings goal retrieved successfully" },
+            404: { description: "Goal not found" },
+          },
+        },
+        put: {
+          tags: ["Goals"],
+          summary: "Update goal details",
+          security: [{ BearerAuth: [] }],
+          parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+          responses: {
+            200: { description: "Savings goal updated successfully" },
+          },
+        },
+        delete: {
+          tags: ["Goals"],
+          summary: "Delete goal and its contributions",
+          security: [{ BearerAuth: [] }],
+          parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+          responses: {
+            200: { description: "Savings goal deleted successfully" },
+          },
+        },
+      },
+      "/api/goals/{id}/contributions": {
+        get: {
+          tags: ["Goals"],
+          summary: "List contributions for a goal",
+          security: [{ BearerAuth: [] }],
+          parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+          responses: {
+            200: { description: "Goal contributions retrieved successfully" },
+          },
+        },
+        post: {
+          tags: ["Goals"],
+          summary: "Record savings progress contribution for a goal",
+          security: [{ BearerAuth: [] }],
+          parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["amount"],
+                  properties: {
+                    amount: { type: "number", example: 5000 },
+                    contributionDate: { type: "string", format: "date", example: "2026-10-15" },
+                    note: { type: "string", example: "Monthly salary allocation" },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            201: { description: "Goal contribution recorded successfully" },
+          },
+        },
+      },
     },
   },
 };

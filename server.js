@@ -16,6 +16,7 @@ import accountRoutes from "./routes/accountRoutes.js";
 import transferRoutes from "./routes/transferRoutes.js";
 import smartTransactionRoutes from "./routes/smartTransactionRoutes.js";
 import analyticsRoutes from "./routes/analyticsRoutes.js";
+import goalRoutes from "./routes/goalRoutes.js";
 
 import { assertNoProhibitedProvidersConfigured } from "./services/analytics/outboundPolicy.js";
 
@@ -133,6 +134,7 @@ app.use("/api/accounts", accountRoutes);
 app.use("/api/transfers", transferRoutes);
 app.use("/api/smart-transactions", smartTransactionRoutes);
 app.use("/api/analytics", analyticsRoutes);
+app.use("/api/goals", goalRoutes);
 
 app.get("/", (req, res) => {
   res.json({

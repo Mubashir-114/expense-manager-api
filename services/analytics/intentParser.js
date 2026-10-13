@@ -21,6 +21,12 @@ export const SUPPORTED_INTENTS = Object.freeze([
   "savings_opportunities",
   "explain_calculation",
   "clarification_needed",
+  "goal_affordability",
+  "goal_completion_estimate",
+  "goal_status_summary",
+  "goal_recommended_saving",
+  "goal_what_if_expense",
+  "goal_forecast_explanation",
 ]);
 
 export const SUGGESTED_QUESTIONS = Object.freeze([
@@ -83,6 +89,26 @@ export const SUGGESTED_QUESTIONS = Object.freeze([
     intent: "overview_insights",
     question: "Give me financial insights for this month",
     label: "Financial Insights",
+  },
+  {
+    intent: "goal_affordability",
+    question: "Can I afford to save ₹5,000 monthly?",
+    label: "Savings Affordability",
+  },
+  {
+    intent: "goal_status_summary",
+    question: "Which goal is closest to completion?",
+    label: "Goal Status",
+  },
+  {
+    intent: "goal_recommended_saving",
+    question: "How much should I save each month?",
+    label: "Recommended Saving",
+  },
+  {
+    intent: "goal_forecast_explanation",
+    question: "Explain my savings forecast",
+    label: "Forecast Explanation",
   },
 ]);
 
@@ -214,6 +240,33 @@ export const detectCategoryFromText = (text) => {
 };
 
 /**
+ * Extracts numeric money/savings amount from query text.
+ */
+export const extractAmountFromText = (text) => {
+  if (typeof text !== "string") return null;
+  const match = text.match(/(?:(?:₹|rs\.?|inr|\$)\s*)?([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]+)?|[0-9]+(?:\.[0-9]+)?)/i);
+  if (!match) return null;
+  const cleaned = match[1].replace(/,/g, "");
+  const num = Number(cleaned);
+  return isNaN(num) || num <= 0 ? null : num;
+};
+
+/**
+ * Extracts potential target goal name from query text.
+ */
+export const extractGoalTargetFromText = (text) => {
+  if (typeof text !== "string") return null;
+  const match = text.match(/(?:reach|achieve|for|complete|attain)\s+(?:my\s+|the\s+|a\s+)?([a-zA-Z0-9\s-]+?)(?:\s+goal)?(?:\?|$)/i);
+  if (match && match[1]) {
+    const candidate = match[1].trim();
+    if (candidate && !["my", "the", "a", "an", "this", "it", "any"].includes(candidate.toLowerCase())) {
+      return candidate;
+    }
+  }
+  return null;
+};
+
+/**
  * Classifies a normalized question into an allowlisted intent.
  * Incorporates ephemeral conversation context for multi-turn interactions.
  */
@@ -308,6 +361,136 @@ export const parseUserQuery = ({
       isRefusal: false,
       question: normalizedText,
       period: "last_30_days",
+      startDate,
+      endDate,
+      month,
+      category: detectedCategory,
+      confidence: "high",
+      suggestions: SUGGESTED_QUESTIONS,
+      conversationContext,
+    };
+  }
+
+  // ── 5D.5: Goal Affordability ───────────────────────────────────────────────
+  // "Can I afford to save ₹5,000 monthly?" / "Can I afford to save 5000?"
+  if (
+    /can\s*i\s*afford\s*(?:to\s*save)?/i.test(lower) ||
+    /afford\s*(?:to\s*save)?/i.test(lower)
+  ) {
+    const targetAmount = extractAmountFromText(normalizedText) || 5000;
+    return {
+      intent: "goal_affordability",
+      isRefusal: false,
+      question: normalizedText,
+      targetAmount,
+      period: period || "current_month",
+      startDate,
+      endDate,
+      month,
+      category: detectedCategory,
+      confidence: "high",
+      suggestions: SUGGESTED_QUESTIONS,
+      conversationContext,
+    };
+  }
+
+  // ── 5D.5: Goal Completion Estimate ─────────────────────────────────────────
+  // "When can I reach my laptop goal?" / "When can I reach my goal?"
+  if (
+    /(?:when\s*(?:can|will)\s*i\s*(?:reach|achieve|complete|finish)|how\s*long\s*(?:will\s*it\s*take|until\s*i\s*(?:reach|complete)))/i.test(lower)
+  ) {
+    const targetGoalName = extractGoalTargetFromText(normalizedText);
+    return {
+      intent: "goal_completion_estimate",
+      isRefusal: false,
+      question: normalizedText,
+      targetGoalName,
+      period: period || "current_month",
+      startDate,
+      endDate,
+      month,
+      category: detectedCategory,
+      confidence: "high",
+      suggestions: SUGGESTED_QUESTIONS,
+      conversationContext,
+    };
+  }
+
+  // ── 5D.5: Goal Status Summary & Attention ──────────────────────────────────
+  // "Which goal is closest to completion?" / "Which goal needs more attention?"
+  if (
+    /(?:which\s*goal\s*(?:is\s*(?:closest|furthest|nearest)|needs\s*more\s*attention)|goals?\s*(?:status|progress|overview|summary)|my\s*savings?\s*goals?)/i.test(lower)
+  ) {
+    const isNeedsAttention = /needs?\s*(?:more\s*)?attention|furthest|behind/i.test(lower);
+    return {
+      intent: "goal_status_summary",
+      subType: isNeedsAttention ? "needs_attention" : "closest_to_completion",
+      isRefusal: false,
+      question: normalizedText,
+      period: period || "current_month",
+      startDate,
+      endDate,
+      month,
+      category: detectedCategory,
+      confidence: "high",
+      suggestions: SUGGESTED_QUESTIONS,
+      conversationContext,
+    };
+  }
+
+  // ── 5D.5: Recommended Monthly Saving ───────────────────────────────────────
+  // "How much should I save each month?" / "How much should I save monthly?"
+  if (
+    /(?:how\s*much\s*should\s*i\s*save|recommended\s*savings?|how\s*much\s*can\s*i\s*save\s*(?:each|every|per|a)?\s*month)/i.test(lower)
+  ) {
+    return {
+      intent: "goal_recommended_saving",
+      isRefusal: false,
+      question: normalizedText,
+      period: period || "current_month",
+      startDate,
+      endDate,
+      month,
+      category: detectedCategory,
+      confidence: "high",
+      suggestions: SUGGESTED_QUESTIONS,
+      conversationContext,
+    };
+  }
+
+  // ── 5D.5: What-If Expense Reduction ────────────────────────────────────────
+  // "What if I reduce my shopping expenses?" / "What if I spend ₹1,000 less each month?"
+  if (
+    /what\s*if\s*i\s*(?:reduce|cut|spend\s*less|trim|save\s*more)/i.test(lower)
+  ) {
+    const targetAmount = extractAmountFromText(normalizedText);
+    return {
+      intent: "goal_what_if_expense",
+      isRefusal: false,
+      question: normalizedText,
+      targetAmount,
+      period: period || "current_month",
+      startDate,
+      endDate,
+      month,
+      category: detectedCategory,
+      confidence: "high",
+      suggestions: SUGGESTED_QUESTIONS,
+      conversationContext,
+    };
+  }
+
+  // ── 5D.5: Forecast Explanation ─────────────────────────────────────────────
+  // "Explain my savings forecast" / "What is my cash-flow forecast?"
+  if (
+    /(?:explain|show|what\s*is)\s*(?:my\s*)?(?:savings?\s*)?forecast/i.test(lower) ||
+    /(?:explain|show|what\s*is)\s*(?:my\s*)?cash[- ]?flow/i.test(lower)
+  ) {
+    return {
+      intent: "goal_forecast_explanation",
+      isRefusal: false,
+      question: normalizedText,
+      period: period || "next_3_months",
       startDate,
       endDate,
       month,

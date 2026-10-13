@@ -12,6 +12,15 @@
 import analyticsDb from "../../config/analyticsDb.js";
 import AppError from "../../utils/AppError.js";
 import { formatTemplateResponse } from "./responseTemplater.js";
+import {
+  generateCashFlowForecast,
+  enrichGoalProgress,
+  runWhatIfSimulation,
+} from "../planningService.js";
+import {
+  getGoals,
+  getContributions,
+} from "../../models/goalModel.js";
 
 const getDaysInMonth = (year, month) => new Date(Date.UTC(year, month, 0)).getUTCDate();
 
@@ -843,6 +852,161 @@ const computeExplainCalculation = async (userId, period, options = {}) => {
 };
 
 /**
+ * 5D.5: Compute Goal Affordability
+ */
+const computeGoalAffordability = async (userId, period, options = {}) => {
+  const forecast = await generateCashFlowForecast(userId, "next_3_months");
+  const requestedMonthlySaving = Number(options.targetAmount || 5000);
+  const potentialSavingsCapacity = forecast.potentialMonthlySavingsCapacity;
+  const isAffordable = forecast.netMonthlyCashFlow >= requestedMonthlySaving;
+  const gap = Math.max(0, Number((requestedMonthlySaving - potentialSavingsCapacity).toFixed(2)));
+
+  return {
+    requestedMonthlySaving,
+    historicalAvgMonthlyIncome: forecast.historicalAvgMonthlyIncome,
+    historicalAvgMonthlyExpense: forecast.historicalAvgMonthlyExpense,
+    netMonthlyCashFlow: forecast.netMonthlyCashFlow,
+    potentialSavingsCapacity,
+    isAffordable,
+    gap,
+    transactionCount: forecast.dataSufficiency.recordCount,
+  };
+};
+
+/**
+ * 5D.5: Compute Goal Completion Estimate
+ */
+const computeGoalCompletionEstimate = async (userId, period, options = {}) => {
+  const rawGoals = await getGoals(userId, { status: "active" });
+  let matchedGoal = null;
+
+  if (options.targetGoalName && rawGoals.length > 0) {
+    const term = options.targetGoalName.toLowerCase();
+    matchedGoal = rawGoals.find((g) => g.name.toLowerCase().includes(term)) || null;
+  }
+  if (!matchedGoal && rawGoals.length > 0) {
+    matchedGoal = rawGoals[0];
+  }
+
+  let enrichedGoal = null;
+  if (matchedGoal) {
+    const { contributions } = await getContributions(matchedGoal.id, userId, { limit: 100 });
+    enrichedGoal = enrichGoalProgress(matchedGoal, contributions);
+  }
+
+  const forecast = await generateCashFlowForecast(userId, "next_3_months");
+
+  return {
+    goal: enrichedGoal,
+    targetGoalName: options.targetGoalName || (enrichedGoal ? enrichedGoal.name : null),
+    savingsCapacity: forecast.potentialMonthlySavingsCapacity,
+    netMonthlyCashFlow: forecast.netMonthlyCashFlow,
+    transactionCount: forecast.dataSufficiency.recordCount,
+  };
+};
+
+/**
+ * 5D.5: Compute Goal Status Summary
+ */
+const computeGoalStatusSummary = async (userId, period, options = {}) => {
+  const rawGoals = await getGoals(userId, { status: "all" });
+  const enrichedGoals = await Promise.all(
+    rawGoals.map(async (g) => {
+      const { contributions } = await getContributions(g.id, userId, { limit: 100 });
+      return enrichGoalProgress(g, contributions);
+    })
+  );
+
+  const activeGoals = enrichedGoals.filter((g) => g.status === "active");
+
+  let closestGoal = null;
+  if (activeGoals.length > 0) {
+    closestGoal = [...activeGoals].sort((a, b) => b.progressPercentage - a.progressPercentage)[0];
+  }
+
+  let attentionGoal = null;
+  const behindGoals = activeGoals.filter((g) => g.intelligenceStatus === "behind_schedule" || g.isOverdue);
+  if (behindGoals.length > 0) {
+    attentionGoal = behindGoals[0];
+  } else if (activeGoals.length > 0) {
+    attentionGoal = [...activeGoals].sort((a, b) => a.progressPercentage - b.progressPercentage)[0];
+  }
+
+  return {
+    subType: options.subType || "closest_to_completion",
+    closestGoal,
+    attentionGoal,
+    totalGoalsCount: enrichedGoals.length,
+    activeGoalsCount: activeGoals.length,
+    goals: enrichedGoals,
+    transactionCount: activeGoals.length,
+  };
+};
+
+/**
+ * 5D.5: Compute Recommended Monthly Saving
+ */
+const computeGoalRecommendedSaving = async (userId, period, options = {}) => {
+  const forecast = await generateCashFlowForecast(userId, "next_3_months");
+  const rawGoals = await getGoals(userId, { status: "active" });
+  const enrichedGoals = await Promise.all(
+    rawGoals.map(async (g) => {
+      const { contributions } = await getContributions(g.id, userId, { limit: 100 });
+      return enrichGoalProgress(g, contributions);
+    })
+  );
+
+  let totalRequiredAcrossGoals = 0;
+  for (const g of enrichedGoals) {
+    if (g.requiredMonthlySaving) {
+      totalRequiredAcrossGoals += g.requiredMonthlySaving;
+    }
+  }
+
+  const avgIncome = forecast.historicalAvgMonthlyIncome;
+  const recommended20Percent = Number((avgIncome * 0.2).toFixed(2));
+
+  return {
+    avgMonthlyIncome: avgIncome,
+    avgMonthlyExpense: forecast.historicalAvgMonthlyExpense,
+    netMonthlyCashFlow: forecast.netMonthlyCashFlow,
+    savingsCapacity: forecast.potentialMonthlySavingsCapacity,
+    recommended20Percent,
+    totalRequiredAcrossGoals: Number(totalRequiredAcrossGoals.toFixed(2)),
+    activeGoalsCount: enrichedGoals.length,
+    transactionCount: forecast.dataSufficiency.recordCount,
+  };
+};
+
+/**
+ * 5D.5: Compute What-If Expense Reduction
+ */
+const computeGoalWhatIfExpense = async (userId, period, options = {}) => {
+  const amount = options.targetAmount || 1000;
+  const simulation = await runWhatIfSimulation(userId, {
+    scenarioType: "expense_reduction",
+    expenseReductionAmount: amount,
+  });
+
+  return {
+    reductionAmount: amount,
+    simulation,
+    transactionCount: 1,
+  };
+};
+
+/**
+ * 5D.5: Compute Cash-Flow Forecast Explanation
+ */
+const computeGoalForecastExplanation = async (userId, period, options = {}) => {
+  const forecast = await generateCashFlowForecast(userId, "next_3_months");
+  return {
+    forecast,
+    transactionCount: forecast.dataSufficiency.recordCount,
+  };
+};
+
+/**
  * Main query dispatcher for Phase 5B Assistant & Analytics.
  */
 export const executeAnalyticsQuery = async (userId, parsedQuery) => {
@@ -936,6 +1100,30 @@ export const executeAnalyticsQuery = async (userId, parsedQuery) => {
         category: parsedQuery.category,
         previousIntent: parsedQuery.conversationContext?.previousIntent,
       });
+      break;
+
+    case "goal_affordability":
+      metrics = await computeGoalAffordability(userId, period, parsedQuery);
+      break;
+
+    case "goal_completion_estimate":
+      metrics = await computeGoalCompletionEstimate(userId, period, parsedQuery);
+      break;
+
+    case "goal_status_summary":
+      metrics = await computeGoalStatusSummary(userId, period, parsedQuery);
+      break;
+
+    case "goal_recommended_saving":
+      metrics = await computeGoalRecommendedSaving(userId, period, parsedQuery);
+      break;
+
+    case "goal_what_if_expense":
+      metrics = await computeGoalWhatIfExpense(userId, period, parsedQuery);
+      break;
+
+    case "goal_forecast_explanation":
+      metrics = await computeGoalForecastExplanation(userId, period, parsedQuery);
       break;
 
     default:

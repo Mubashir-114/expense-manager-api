@@ -6,6 +6,8 @@ These scripts are ordered by their numeric prefix.
 2. `0002_account_foundation.sql`
 3. `0003_account_transactions_and_transfers.sql`
 4. `0004_credit_card_management.sql`
+5. `0005_smart_transactions.sql`
+6. `0006_savings_goals_and_planning.sql`
 
 `0001` is only a reconstructed baseline for a new, empty local development
 database. It was derived from the backend access paths at commit `7a91c362`.
@@ -52,6 +54,11 @@ payment due day configuration to credit card accounts with constraint guards.
 uniqueness to `(user_id, sms_hash)` and creating the `detected_transactions`
 table for the smart transaction parsing, auto-categorization, account matching,
 and staged review workflow.
+
+`0006` is the Phase 5D additive schema creating the `savings_goals` table
+for deterministic savings tracking and lifecycle management, and the
+`goal_contributions` ledger table for user-scoped allocation tracking.
+Goal contributions do not mutate real account balances or transactions.
 
 Runtime application credentials are intentionally insufficient to apply
 these scripts. Schema setup must use a separately controlled migration/admin
