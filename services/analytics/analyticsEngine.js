@@ -780,6 +780,69 @@ const computeDeterministicInsights = async (userId, period) => {
 };
 
 /**
+ * Explain Calculation Methodology Engine (Feature 5C.5)
+ */
+const computeExplainCalculation = async (userId, period, options = {}) => {
+  const previousIntent = options.previousIntent || "general";
+  const category = options.category;
+
+  if (previousIntent === "budget_status" || category) {
+    const budgetStatus = await computeBudgetStatus(userId, period, { category });
+    return {
+      type: "budget_status",
+      category,
+      formula: "spent = SUM(transactions.amount WHERE user_id = ? AND category_id = ? AND type = 'expense'), overrun = spent - budget_limit",
+      sourceTables: ["budgets", "categories", "transactions"],
+      budgetStatus,
+      transactionCount: budgetStatus.transactionCount,
+    };
+  }
+
+  if (previousIntent === "category_comparison") {
+    const comparison = await computeCategoryComparison(userId, period, { category });
+    return {
+      type: "category_comparison",
+      category,
+      formula: "delta = current_total - previous_total, percent_change = (delta / previous_total) * 100",
+      sourceTables: ["categories", "transactions"],
+      comparison,
+      transactionCount: comparison.transactionCount,
+    };
+  }
+
+  if (previousIntent === "unusual_spending") {
+    const unusual = await computeUnusualSpending(userId, period);
+    return {
+      type: "unusual_spending",
+      formula: "Category surge: diff >= 1000 AND (diff / prev) >= 50%. Large expense: amount >= 2.5 * avgTx AND amount >= 1000",
+      sourceTables: ["transactions", "categories", "budgets"],
+      unusual,
+      transactionCount: unusual.transactionCount,
+    };
+  }
+
+  if (previousIntent === "savings_opportunities") {
+    const savings = await computeSavingsOpportunities(userId, period);
+    return {
+      type: "savings_opportunities",
+      formula: "Over-budget savings = spent - budget_limit; Discretionary surge trim = Math.round(surge * 0.5)",
+      sourceTables: ["budgets", "categories", "transactions"],
+      savings,
+      transactionCount: savings.transactionCount,
+    };
+  }
+
+  const incExp = await computeIncomeVsExpense(userId, period);
+  return {
+    type: "income_vs_expense",
+    formula: "net_savings = total_income - total_expense, savings_rate = (net_savings / total_income) * 100",
+    sourceTables: ["transactions"],
+    incExp,
+    transactionCount: incExp.transactionCount,
+  };
+};
+
+/**
  * Main query dispatcher for Phase 5B Assistant & Analytics.
  */
 export const executeAnalyticsQuery = async (userId, parsedQuery) => {
@@ -866,6 +929,13 @@ export const executeAnalyticsQuery = async (userId, parsedQuery) => {
 
     case "savings_opportunities":
       metrics = await computeSavingsOpportunities(userId, period);
+      break;
+
+    case "explain_calculation":
+      metrics = await computeExplainCalculation(userId, period, {
+        category: parsedQuery.category,
+        previousIntent: parsedQuery.conversationContext?.previousIntent,
+      });
       break;
 
     default:

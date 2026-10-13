@@ -169,3 +169,80 @@ export const analyticsInsightsValidation = [
     .matches(/^\d{4}-\d{2}-\d{2}$/)
     .withMessage("endDate must be in YYYY-MM-DD format"),
 ];
+
+const ALLOWED_ALERTS_QUERY_FIELDS = Object.freeze([
+  "period",
+  "month",
+  "startDate",
+  "endDate",
+  "budgetThreshold",
+  "enableBudgetAlerts",
+  "enableUnusualAlerts",
+  "enableSavingsAlerts",
+  "enableSpendingTrends",
+  "enableProactiveInsights",
+]);
+
+export const analyticsAlertsValidation = [
+  // Reject unknown fields in query params
+  query().custom((value, { req }) => {
+    const extraFields = Object.keys(req.query || {}).filter(
+      (k) => !ALLOWED_ALERTS_QUERY_FIELDS.includes(k)
+    );
+    if (extraFields.length > 0) {
+      throw new Error(`Unknown query parameter(s) not allowed: ${extraFields.join(", ")}`);
+    }
+    return true;
+  }),
+
+  query("period")
+    .optional({ values: "falsy" })
+    .isString()
+    .isIn(["current_month", "previous_month", "last_30_days", "custom"])
+    .withMessage("Period must be one of: current_month, previous_month, last_30_days, custom"),
+
+  query("month")
+    .optional({ values: "falsy" })
+    .matches(/^\d{4}-\d{2}$/)
+    .withMessage("Month must be in YYYY-MM format"),
+
+  query("startDate")
+    .optional({ values: "falsy" })
+    .matches(/^\d{4}-\d{2}-\d{2}$/)
+    .withMessage("startDate must be in YYYY-MM-DD format"),
+
+  query("endDate")
+    .optional({ values: "falsy" })
+    .matches(/^\d{4}-\d{2}-\d{2}$/)
+    .withMessage("endDate must be in YYYY-MM-DD format"),
+
+  query("budgetThreshold")
+    .optional({ values: "falsy" })
+    .isInt({ min: 1, max: 100 })
+    .withMessage("budgetThreshold must be an integer between 1 and 100"),
+
+  query("enableBudgetAlerts")
+    .optional({ values: "falsy" })
+    .isBoolean()
+    .withMessage("enableBudgetAlerts must be a boolean"),
+
+  query("enableUnusualAlerts")
+    .optional({ values: "falsy" })
+    .isBoolean()
+    .withMessage("enableUnusualAlerts must be a boolean"),
+
+  query("enableSavingsAlerts")
+    .optional({ values: "falsy" })
+    .isBoolean()
+    .withMessage("enableSavingsAlerts must be a boolean"),
+
+  query("enableSpendingTrends")
+    .optional({ values: "falsy" })
+    .isBoolean()
+    .withMessage("enableSpendingTrends must be a boolean"),
+
+  query("enableProactiveInsights")
+    .optional({ values: "falsy" })
+    .isBoolean()
+    .withMessage("enableProactiveInsights must be a boolean"),
+];

@@ -19,6 +19,7 @@ export const SUPPORTED_INTENTS = Object.freeze([
   "remaining_allowance",
   "unusual_spending",
   "savings_opportunities",
+  "explain_calculation",
   "clarification_needed",
 ]);
 
@@ -37,6 +38,11 @@ export const SUGGESTED_QUESTIONS = Object.freeze([
     intent: "spending_trend",
     question: "How does my spending compare to last month?",
     label: "Spending Trend",
+  },
+  {
+    intent: "explain_calculation",
+    question: "How was this calculated?",
+    label: "Calculation Methodology",
   },
   {
     intent: "category_comparison",
@@ -312,10 +318,34 @@ export const parseUserQuery = ({
     };
   }
 
+  // ── 5C.5: Explain Calculation Methodology ──────────────────────────────────
+  // "How was this calculated?" / "Explain the calculation" / "Show calculation formula"
+  if (
+    /how\s*(?:was|is)\s*(?:this|it|the\s*insight|the\s*alert)\s*calculated/i.test(lower) ||
+    /(?:explain|show)\s*(?:the\s*)?(?:calculation|formula|methodology|provenance)/i.test(lower) ||
+    /how\s*did\s*you\s*calculate\s*(?:this|it)?/i.test(lower)
+  ) {
+    return {
+      intent: "explain_calculation",
+      isRefusal: false,
+      question: normalizedText,
+      period: period || (conversationContext?.activePeriod || "current_month"),
+      startDate,
+      endDate,
+      month,
+      category: detectedCategory,
+      confidence: "high",
+      suggestions: SUGGESTED_QUESTIONS,
+      conversationContext,
+    };
+  }
+
   // ── 5B.1 & 5B.2: Category Comparisons & Month-over-Month Explanations ──────
-  // "Which category increased the most?" / "Which category decreased the most?"
+  // "Which category increased the most?" / "Which category decreased the most?" / "Explain this spending increase"
   if (
     /(which|what)\s*category\s*(increased|grew|went\s*up|rose|decreased|dropped|fell)\s*(the\s*)?most/i.test(lower) ||
+    /(?:explain|why\s*(?:did|is))\s*(?:this|the|my)?\s*(?:spending\s*)?(?:increase|surge|spike|growth)/i.test(lower) ||
+    /(?:spending|expense)\s*(?:increase|surge|spike)\s*explanation/i.test(lower) ||
     /category\s*(spending\s*)?comparison/i.test(lower) ||
     /compare\s*(my\s*)?categor(y|ies)/i.test(lower) ||
     /biggest\s*(category\s*)?(increase|decrease|jump|drop)/i.test(lower) ||
@@ -382,10 +412,11 @@ export const parseUserQuery = ({
     };
   }
 
-  // ── 5B.2: Explainable Savings Opportunities ────────────────────────────────
-  // "Where can I save money?" / "Show savings opportunities"
+  // ── 5B.2 & 5C.5: Explainable Savings Opportunities ────────────────────────
+  // "Where can I save money?" / "Show savings opportunities" / "What can I do to improve?"
   if (
     /(where|how)\s*can\s*i\s*save\s*(money|more)/i.test(lower) ||
+    /(?:what\s*can\s*i\s*do\s*to\s*improve|how\s*(?:can|to)\s*improve|tips?\s*to\s*improve|how\s*can\s*i\s*do\s*better)/i.test(lower) ||
     /savings?\s*opportunit(?:y|ies)/i.test(lower) ||
     /ways?\s*to\s*save/i.test(lower) ||
     /cut\s*(?:back|down|expenses?|spending)/i.test(lower) ||
@@ -407,9 +438,10 @@ export const parseUserQuery = ({
   }
 
   // ── Budget Status (Category-specific or Overall) ───────────────────────────
-  // "Am I exceeding my food budget?" / "How are my budgets doing?"
+  // "Am I exceeding my food budget?" / "Why am I over budget?" / "How are my budgets doing?"
   if (
     /(?:am\s*i\s*(?:exceeding|over|within|on\s*track)|how\s*(?:is|are)\s*my|check\s*my)\s*.*?\bbudget/i.test(lower) ||
+    /(?:why\s*(?:am\s*i|are\s*we|is\s*my)\s*(?:over\s*budget|exceeding|over\s*the\s*budget))/i.test(lower) ||
     /budget\s*(?:status|progress|limits?)/i.test(lower) ||
     /how\s*are\s*my\s*budgets/i.test(lower) ||
     /(?:over|under)\s*budget/i.test(lower) ||
@@ -476,7 +508,7 @@ export const parseUserQuery = ({
 
   // ── Spending trend ─────────────────────────────────────────────────────────
   if (
-    /(compare|compared)\s*to\s*last\s*month/i.test(lower) ||
+    /(compare|compared)\s*(?:this\s*)?(?:to|with)\s*(?:last|previous)\s*month/i.test(lower) ||
     /spending\s*trend/i.test(lower) ||
     /spending\s*(more|less)/i.test(lower) ||
     /trend\s*over\s*time/i.test(lower) ||

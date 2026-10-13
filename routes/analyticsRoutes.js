@@ -6,11 +6,13 @@ import validate from "../middleware/validate.js";
 import {
   analyticsQueryValidation,
   analyticsInsightsValidation,
+  analyticsAlertsValidation,
 } from "../validators/analyticsValidation.js";
 import {
   queryAnalytics,
   getInsights,
   getCapabilities,
+  getProactiveAlerts,
 } from "../controllers/analyticsController.js";
 
 const router = express.Router();
@@ -50,6 +52,15 @@ router.get(
   analyticsInsightsValidation,
   validate,
   getInsights
+);
+
+// Get deterministic proactive financial alerts
+router.get(
+  "/alerts",
+  analyticsRateLimiter,
+  analyticsAlertsValidation,
+  validate,
+  getProactiveAlerts
 );
 
 export default router;

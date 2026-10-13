@@ -101,6 +101,13 @@ export const buildFollowUpSuggestions = (intent, metrics = {}, activeCategory = 
         { intent: "budget_status", question: "How are my budgets doing?", label: "Budgets" },
       ];
 
+    case "explain_calculation":
+      return [
+        { intent: "budget_status", question: "How are my budgets doing?", label: "Budgets" },
+        { intent: "category_comparison", question: "Which category increased the most?", label: "Biggest Increase" },
+        { intent: "savings_opportunities", question: "Where can I save money?", label: "Savings Opportunities" },
+      ];
+
     default:
       return [
         { intent: "total_spending", question: "How much did I spend this month?", label: "Total Spending" },
@@ -380,6 +387,23 @@ export const formatTemplateResponse = ({
       const inc = formatCurrency(metrics.totalIncome);
       const insightsCount = (metrics.insights || []).length;
       answer = `Financial Overview for ${period.label}: Total income of ${inc} and expenses of ${exp}. Generated ${insightsCount} deterministic observations based on your saved records.`;
+      break;
+    }
+
+    case "explain_calculation": {
+      const type = metrics.type || "general";
+      const cat = resolvedCategory || metrics.category;
+      if (type === "budget_status" && cat) {
+        answer = `Calculation Methodology for ${escapeText(cat)} Budget: Spending is computed as the exact sum of verified expense transactions in ${escapeText(cat)} for ${period.label}. The budget limit is retrieved from your saved monthly budgets. Overrun is calculated as (spent - budget_limit). Sourced strictly from your saved database records.`;
+      } else if (type === "category_comparison") {
+        answer = `Calculation Methodology for Category Comparison: Sourced from transactions grouped by category for ${period.label} compared against ${period.previousPeriod.label}. Percentage change is calculated as ((current_spending - previous_spending) / previous_spending) * 100.`;
+      } else if (type === "unusual_spending") {
+        answer = `Calculation Methodology for Unusual Spending: Compares category spending delta against previous period (threshold: >= 50% increase and >= ₹1,000) and detects individual purchases exceeding 2.5x your historical average transaction amount with sufficient sample size.`;
+      } else if (type === "savings_opportunities") {
+        answer = `Calculation Methodology for Savings Opportunities: Sourced by evaluating over-budget categories (recovering exact overrun) and discretionary category surges (targeting 50% trimming of recorded increases). All amounts are strictly evidence-based facts.`;
+      } else {
+        answer = `Calculation Methodology: All metrics are computed deterministically from your authenticated FinTrack transaction and budget records using exact decimal arithmetic. Zero external AI models, third-party trackers, or bank APIs are used.`;
+      }
       break;
     }
 

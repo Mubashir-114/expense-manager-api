@@ -8,6 +8,10 @@ import {
   executeAnalyticsQuery,
   getDeterministicInsights,
 } from "../services/analytics/analyticsEngine.js";
+import {
+  generateProactiveAlerts,
+  DEFAULT_ALERT_PREFERENCES,
+} from "../services/analytics/proactiveEngine.js";
 import { PRIVACY_NOTICE } from "../services/analytics/responseTemplater.js";
 
 /**
@@ -56,6 +60,34 @@ export const getInsights = asyncHandler(async (req, res) => {
 });
 
 /**
+ * GET /api/analytics/alerts
+ * Returns deterministic proactive financial alerts for authenticated user.
+ * Scoped strictly to req.user.id.
+ */
+export const getProactiveAlerts = asyncHandler(async (req, res) => {
+  const userId = req.user.id;
+
+  const preferences = {
+    enableProactiveInsights: req.query.enableProactiveInsights !== "false",
+    enableBudgetAlerts: req.query.enableBudgetAlerts !== "false",
+    enableUnusualAlerts: req.query.enableUnusualAlerts !== "false",
+    enableSavingsAlerts: req.query.enableSavingsAlerts !== "false",
+    enableSpendingTrends: req.query.enableSpendingTrends !== "false",
+    budgetWarningThreshold: req.query.budgetThreshold
+      ? Number(req.query.budgetThreshold)
+      : DEFAULT_ALERT_PREFERENCES.budgetWarningThreshold,
+  };
+
+  const data = await generateProactiveAlerts(userId, req.query, preferences);
+
+  res.json({
+    success: true,
+    message: "Proactive financial alerts fetched successfully",
+    data,
+  });
+});
+
+/**
  * GET /api/analytics/capabilities
  * Returns the allowlisted capabilities, example questions, and privacy guarantee.
  */
@@ -74,6 +106,26 @@ export const getCapabilities = asyncHandler(async (req, res) => {
         prohibitsBankAccess: true,
         prohibitsSmsInboxAccess: true,
         prohibitsExternalAi: true,
+      },
+      proactiveAlerts: {
+        supportedAlertTypes: [
+          "budget_exceeded",
+          "budget_reached",
+          "budget_approaching",
+          "budget_rapid_spending",
+          "unusual_category_spike",
+          "unusual_large_transaction",
+          "spending_trend_increase",
+          "spending_trend_decrease",
+          "savings_budget_alignment",
+          "savings_discretionary_trim",
+          "informational_summary",
+        ],
+        defaultThresholds: {
+          budgetApproaching: 80,
+          budgetReached: 100,
+          budgetExceeded: 100,
+        },
       },
       privacyNotice: PRIVACY_NOTICE,
     },
