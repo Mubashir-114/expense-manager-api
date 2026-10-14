@@ -54,7 +54,7 @@ All raw, private financial information and user queries remain strictly within t
         │ { success: true, data: { intent, period, metrics, answer, provenance, privacyNotice } }
         ▼
 [ Flutter Presentation Layer ]
-        Display in AnalyticsScreen:
+        Display in FIN Companion (F.I.N. — Financial Intelligence Navigator, "Your personal financial companion."):
         - Intent Badge & Date Range Chip
         - Templated Answer & Metric Progress Bars
         - Verified Provenance Card
