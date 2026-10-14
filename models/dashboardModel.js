@@ -7,6 +7,38 @@ import {
 
 const getDaysInMonth = (year, month) => new Date(Date.UTC(year, month, 0)).getUTCDate();
 
+const categoryIcons = {
+  Salary: "work",
+  "Other Income": "attach_money",
+  Freelancing: "laptop",
+  Business: "business",
+  Investment: "trending_up",
+  Bonus: "card_giftcard",
+  Gift: "redeem",
+  Food: "restaurant",
+  Transport: "directions_bus",
+  Housing: "home",
+  Utilities: "bolt",
+  Healthcare: "local_hospital",
+  Entertainment: "movie",
+  Shopping: "shopping_bag",
+  Education: "school",
+  Travel: "flight",
+  "Other Expense": "category",
+  Bills: "receipt",
+  Rent: "home",
+  Medical: "medical_services",
+};
+
+const categoryColors = {
+  income: "#4CAF50",
+  expense: "#F44336",
+};
+
+const getCategoryIcon = (name) => categoryIcons[name] || "category";
+
+const getCategoryColor = (type) => categoryColors[type] || "#888888";
+
 export const resolveDateRange = (filters = {}) => {
   const now = new Date();
   const currentYear = now.getUTCFullYear();
@@ -320,7 +352,7 @@ export const getDashboardAnalytics = async (userId, filters = {}) => {
   const [periodTxRows] = await db.execute(
     `SELECT t.id, t.category_id, t.account_id, t.type, t.title, t.amount,
             t.transaction_date, t.note, t.source,
-            c.name AS category_name, c.icon AS category_icon, c.color AS category_color,
+            c.name AS category_name, c.type AS category_type,
             a.display_name AS account_name, a.type AS account_type
        FROM transactions t
        LEFT JOIN categories c ON c.id = t.category_id
@@ -369,8 +401,9 @@ export const getDashboardAnalytics = async (userId, filters = {}) => {
         categoryExpensesMap.set(catKey, {
           id: tx.category_id,
           name: tx.category_name || "Uncategorized",
-          icon: tx.category_icon || "category",
-          color: tx.category_color || "#888888",
+          type: tx.category_type || "expense",
+          icon: getCategoryIcon(tx.category_name || "Uncategorized"),
+          color: getCategoryColor(tx.category_type || "expense"),
           totalMinor: 0n,
         });
       }
@@ -518,7 +551,7 @@ export const getDashboardAnalytics = async (userId, filters = {}) => {
   const [recentRows] = await db.execute(
     `SELECT t.id, t.category_id, t.account_id, t.type, t.title, t.amount,
             t.transaction_date, t.note, t.source,
-            c.name AS category_name, c.icon AS category_icon, c.color AS category_color,
+            c.name AS category_name, c.type AS category_type,
             a.display_name AS account_name, a.type AS account_type
        FROM transactions t
        LEFT JOIN categories c ON c.id = t.category_id
@@ -540,8 +573,8 @@ export const getDashboardAnalytics = async (userId, filters = {}) => {
       type: r.type,
       date: dStr,
       categoryName: r.category_name || "Uncategorized",
-      categoryIcon: r.category_icon || "category",
-      categoryColor: r.category_color || "#888888",
+      categoryIcon: getCategoryIcon(r.category_name || "Uncategorized"),
+      categoryColor: getCategoryColor(r.category_type || "expense"),
       accountName: r.account_name || null,
       accountType: r.account_type || null,
       source: r.source,
@@ -685,7 +718,7 @@ export const getMonthlySummary = async (userId) => {
 export const getExpenseByCategory = async (userId, filters = {}) => {
   const dateRange = resolveDateRange(filters);
   const [rows] = await db.execute(
-    `SELECT c.id, c.name, c.icon, c.color,
+    `SELECT c.id, c.name, c.type,
             COALESCE(SUM(t.amount), 0) AS total
        FROM transactions t
        JOIN categories c ON c.id = t.category_id
@@ -693,7 +726,7 @@ export const getExpenseByCategory = async (userId, filters = {}) => {
         AND t.type = 'expense'
         AND DATE(t.transaction_date) >= ?
         AND DATE(t.transaction_date) <= ?
-      GROUP BY c.id, c.name, c.icon, c.color
+      GROUP BY c.id, c.name, c.type
       ORDER BY total DESC`,
     [userId, dateRange.startDate, dateRange.endDate],
   );
@@ -701,6 +734,8 @@ export const getExpenseByCategory = async (userId, filters = {}) => {
   return rows.map((row) => ({
     ...row,
     total: Number(row.total),
+    icon: getCategoryIcon(row.name),
+    color: getCategoryColor(row.type),
   }));
 };
 

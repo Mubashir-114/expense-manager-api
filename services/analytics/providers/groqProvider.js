@@ -1,6 +1,15 @@
+import { assertOutboundPolicy, DATA_CLASSIFICATIONS } from "../outboundPolicy.js";
+
 const GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
 
-export const styleWithGroq = async (payload, { apiKey, fetchImpl }) => {
+export const styleWithGroq = async (payload, { apiKey, fetchImpl, env = process.env } = {}) => {
+  assertOutboundPolicy({
+    classification: DATA_CLASSIFICATIONS.NON_SENSITIVE_CONVERSATION,
+    payload,
+    provider: "groq",
+    destination: GROQ_ENDPOINT,
+    env,
+  });
   const response = await fetchImpl(GROQ_ENDPOINT, {
     method: "POST",
     headers: {

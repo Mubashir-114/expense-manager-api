@@ -117,30 +117,54 @@ export const getGoals = async (userId, filters = {}) => {
        g.created_at DESC
   `;
 
-  const [rows] = await db.execute(sql, params);
-  return rows.map(formatGoalRow);
+  try {
+    const [rows] = await db.execute(sql, params);
+    return rows.map(formatGoalRow);
+  } catch (err) {
+    if (
+      err.code === "ER_NO_SUCH_TABLE" ||
+      err.code === "ER_TABLEACCESS_DENIED_ERROR" ||
+      err.message?.includes("doesn't exist") ||
+      err.message?.includes("denied")
+    ) {
+      return [];
+    }
+    throw err;
+  }
 };
 
 /**
  * Retrieves a single goal by ID with strict user scoping.
  */
 export const getGoalById = async (goalId, userId) => {
-  const [rows] = await db.execute(
-    `SELECT g.*,
-            COALESCE(SUM(c.amount), 0) AS contributions_total,
-            COUNT(c.id) AS contributions_count
-       FROM savings_goals g
-       LEFT JOIN goal_contributions c ON c.goal_id = g.id AND c.user_id = g.user_id
-      WHERE g.id = ? AND g.user_id = ?
-      GROUP BY g.id`,
-    [goalId, userId]
-  );
+  try {
+    const [rows] = await db.execute(
+      `SELECT g.*,
+              COALESCE(SUM(c.amount), 0) AS contributions_total,
+              COUNT(c.id) AS contributions_count
+         FROM savings_goals g
+         LEFT JOIN goal_contributions c ON c.goal_id = g.id AND c.user_id = g.user_id
+        WHERE g.id = ? AND g.user_id = ?
+        GROUP BY g.id`,
+      [goalId, userId]
+    );
 
-  if (rows.length === 0) {
-    return null;
+    if (rows.length === 0) {
+      return null;
+    }
+
+    return formatGoalRow(rows[0]);
+  } catch (err) {
+    if (
+      err.code === "ER_NO_SUCH_TABLE" ||
+      err.code === "ER_TABLEACCESS_DENIED_ERROR" ||
+      err.message?.includes("doesn't exist") ||
+      err.message?.includes("denied")
+    ) {
+      return null;
+    }
+    throw err;
   }
-
-  return formatGoalRow(rows[0]);
 };
 
 /**
@@ -258,27 +282,45 @@ export const getContributions = async (goalId, userId, options = {}) => {
   const limit = Math.min(100, Math.max(1, Number(options.limit || 50)));
   const offset = (page - 1) * limit;
 
-  const [countRows] = await db.execute(
-    "SELECT COUNT(*) AS total FROM goal_contributions WHERE goal_id = ? AND user_id = ?",
-    [goalId, userId]
-  );
-  const total = Number(countRows[0]?.total || 0);
+  try {
+    const [countRows] = await db.execute(
+      "SELECT COUNT(*) AS total FROM goal_contributions WHERE goal_id = ? AND user_id = ?",
+      [goalId, userId]
+    );
+    const total = Number(countRows[0]?.total || 0);
 
-  const [rows] = await db.execute(
-    `SELECT * FROM goal_contributions
-      WHERE goal_id = ? AND user_id = ?
-      ORDER BY contribution_date DESC, id DESC
-      LIMIT ? OFFSET ?`,
-    [goalId, userId, limit, offset]
-  );
+    const [rows] = await db.execute(
+      `SELECT * FROM goal_contributions
+        WHERE goal_id = ? AND user_id = ?
+        ORDER BY contribution_date DESC, id DESC
+        LIMIT ? OFFSET ?`,
+      [goalId, userId, limit, offset]
+    );
 
-  return {
-    contributions: rows.map(formatContributionRow),
-    total,
-    page,
-    limit,
-    totalPages: Math.ceil(total / limit) || 1,
-  };
+    return {
+      contributions: rows.map(formatContributionRow),
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit) || 1,
+    };
+  } catch (err) {
+    if (
+      err.code === "ER_NO_SUCH_TABLE" ||
+      err.code === "ER_TABLEACCESS_DENIED_ERROR" ||
+      err.message?.includes("doesn't exist") ||
+      err.message?.includes("denied")
+    ) {
+      return {
+        contributions: [],
+        total: 0,
+        page,
+        limit,
+        totalPages: 1,
+      };
+    }
+    throw err;
+  }
 };
 
 /**

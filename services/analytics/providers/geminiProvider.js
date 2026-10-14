@@ -1,7 +1,16 @@
+import { assertOutboundPolicy, DATA_CLASSIFICATIONS } from "../outboundPolicy.js";
+
 const GEMINI_ENDPOINT =
   "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
 
-export const styleWithGemini = async (payload, { apiKey, fetchImpl }) => {
+export const styleWithGemini = async (payload, { apiKey, fetchImpl, env = process.env } = {}) => {
+  assertOutboundPolicy({
+    classification: DATA_CLASSIFICATIONS.NON_SENSITIVE_CONVERSATION,
+    payload,
+    provider: "gemini",
+    destination: GEMINI_ENDPOINT,
+    env,
+  });
   const response = await fetchImpl(GEMINI_ENDPOINT, {
     method: "POST",
     headers: {

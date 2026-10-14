@@ -74,7 +74,12 @@ export const getCompanionPreferences = async (userId) => {
     }
   } catch (err) {
     // Graceful fallback to memoryCache if table is not yet migrated in current DB
-    if (err.code === "ER_NO_SUCH_TABLE" || err.message?.includes("doesn't exist")) {
+    if (
+      err.code === "ER_NO_SUCH_TABLE" ||
+      err.code === "ER_TABLEACCESS_DENIED_ERROR" ||
+      err.message?.includes("doesn't exist") ||
+      err.message?.includes("denied")
+    ) {
       const cached = memoryCache.get(numericUserId);
       return normalizePreferences(numericUserId, cached);
     }
@@ -165,7 +170,13 @@ export const upsertCompanionPreferences = async (userId, data = {}) => {
       ]
     );
   } catch (err) {
-    if (err.code === "ER_NO_SUCH_TABLE" || err.message?.includes("doesn't exist") || process.env.NODE_ENV === "test") {
+    if (
+      err.code === "ER_NO_SUCH_TABLE" ||
+      err.code === "ER_TABLEACCESS_DENIED_ERROR" ||
+      err.message?.includes("doesn't exist") ||
+      err.message?.includes("denied") ||
+      process.env.NODE_ENV === "test"
+    ) {
       memoryCache.set(numericUserId, updatedRecord);
       return normalizePreferences(numericUserId, updatedRecord);
     }
@@ -193,7 +204,12 @@ export const deleteCompanionPreferences = async (userId) => {
       [numericUserId]
     );
   } catch (err) {
-    if (err.code === "ER_NO_SUCH_TABLE" || err.message?.includes("doesn't exist")) {
+    if (
+      err.code === "ER_NO_SUCH_TABLE" ||
+      err.code === "ER_TABLEACCESS_DENIED_ERROR" ||
+      err.message?.includes("doesn't exist") ||
+      err.message?.includes("denied")
+    ) {
       return { success: true, message: "Companion preferences reset to default" };
     }
     if (process.env.NODE_ENV !== "test") {

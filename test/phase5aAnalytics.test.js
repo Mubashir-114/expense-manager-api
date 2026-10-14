@@ -122,8 +122,15 @@ test("startup fails closed if prohibited external AI providers are configured", 
     (err) => err.code === "PROHIBITED_EXTERNAL_AI_CONFIGURED"
   );
   assert.throws(
-    () => assertNoProhibitedProvidersConfigured({ GEMINI_API_KEY: "ai-gemini-key" }),
+    () => assertNoProhibitedProvidersConfigured({ EXTERNAL_LLM_URL: "https://external-llm.example.com" }),
     (err) => err.code === "PROHIBITED_EXTERNAL_AI_CONFIGURED"
+  );
+
+  // Approved conversational providers (Gemini, Groq) do NOT cause startup failure
+  assert.doesNotThrow(() => assertNoProhibitedProvidersConfigured({ GEMINI_API_KEY: "ai-gemini-key" }));
+  assert.doesNotThrow(() => assertNoProhibitedProvidersConfigured({ GROQ_API_KEY: "ai-groq-key" }));
+  assert.doesNotThrow(() =>
+    assertNoProhibitedProvidersConfigured({ GEMINI_API_KEY: "ai-gemini-key", GROQ_API_KEY: "ai-groq-key" })
   );
 });
 

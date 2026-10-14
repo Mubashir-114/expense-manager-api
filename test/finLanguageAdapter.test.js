@@ -92,16 +92,19 @@ test("startup exception is narrow, explicit, and fails closed", () => {
       allowFinLanguageStyleProvider: true,
     })
   );
-  assert.throws(
-    () => assertNoProhibitedProvidersConfigured(validStyleEnv),
-    (error) => error.code === "PROHIBITED_EXTERNAL_AI_CONFIGURED"
+  assert.doesNotThrow(() => assertNoProhibitedProvidersConfigured(validStyleEnv));
+  assert.doesNotThrow(() =>
+    assertNoProhibitedProvidersConfigured(
+      { ...validStyleEnv, GROQ_API_KEY: "also-configured" },
+      { allowFinLanguageStyleProvider: true }
+    )
   );
   assert.throws(
     () =>
-      assertNoProhibitedProvidersConfigured(
-        { ...validStyleEnv, GROQ_API_KEY: "also-configured" },
-        { allowFinLanguageStyleProvider: true }
-      ),
+      assertNoProhibitedProvidersConfigured({
+        ...validStyleEnv,
+        OPENAI_API_KEY: "prohibited-openai",
+      }),
     (error) => error.code === "PROHIBITED_EXTERNAL_AI_CONFIGURED"
   );
 });

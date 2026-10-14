@@ -37,9 +37,12 @@ if (process.env.NODE_ENV !== "test") {
 // Validate config variables
 validateConfig();
 assertFinLanguageConfiguration();
-assertNoProhibitedProvidersConfigured(process.env, {
+const privacyConfig = assertNoProhibitedProvidersConfigured(process.env, {
   allowFinLanguageStyleProvider: true,
 });
+if (privacyConfig?.externalConfigured) {
+  logger.info("External AI configured; sensitive financial outbound access remains blocked.");
+}
 
 const app = express();
 

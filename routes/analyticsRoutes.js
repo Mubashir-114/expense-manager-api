@@ -1,5 +1,5 @@
 import express from "express";
-import rateLimit from "express-rate-limit";
+import { rateLimit, ipKeyGenerator } from "express-rate-limit";
 
 import authMiddleware from "../middleware/authMiddleware.js";
 import validate from "../middleware/validate.js";
@@ -23,11 +23,16 @@ import {
 
 const router = express.Router();
 
+export const analyticsKeyGenerator = (req) => {
+  if (req.user?.id) return `user:${req.user.id}`;
+  return `ip:${ipKeyGenerator(req.ip)}`;
+};
+
 // Per-user and per-IP rate limiter for analytics queries
-const analyticsRateLimiter = rateLimit({
+export const analyticsRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   limit: 60, // 60 requests per window
-  keyGenerator: (req) => (req.user?.id ? `user_${req.user.id}` : req.ip || "unknown"),
+  keyGenerator: analyticsKeyGenerator,
   standardHeaders: "draft-8",
   legacyHeaders: false,
   message: {

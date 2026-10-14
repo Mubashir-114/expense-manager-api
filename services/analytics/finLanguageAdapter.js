@@ -1,5 +1,6 @@
 import { styleWithGemini } from "./providers/geminiProvider.js";
 import { styleWithGroq } from "./providers/groqProvider.js";
+import { assertOutboundPolicy, DATA_CLASSIFICATIONS } from "./outboundPolicy.js";
 
 const GENERIC_MESSAGES = Object.freeze({
   welcome: "Hello. I am here and ready to help.",
@@ -87,10 +88,16 @@ export const styleGenericMessage = async (
   }
 
   assertFinLanguageConfiguration(env);
+  assertOutboundPolicy({
+    classification: DATA_CLASSIFICATIONS.NON_SENSITIVE_CONVERSATION,
+    payload,
+    provider: env.FIN_LANGUAGE_PROVIDER,
+    env,
+  });
   try {
     const text = env.FIN_LANGUAGE_PROVIDER === "groq"
-      ? await styleWithGroq(payload, { apiKey: env.GROQ_API_KEY, fetchImpl })
-      : await styleWithGemini(payload, { apiKey: env.GEMINI_API_KEY, fetchImpl });
+      ? await styleWithGroq(payload, { apiKey: env.GROQ_API_KEY, fetchImpl, env })
+      : await styleWithGemini(payload, { apiKey: env.GEMINI_API_KEY, fetchImpl, env });
     return { text, provider: env.FIN_LANGUAGE_PROVIDER, external: true };
   } catch {
     // Styling is optional. FIN's trusted deterministic response remains usable.
